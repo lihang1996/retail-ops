@@ -1,0 +1,21 @@
+{
+  "name": "@lh199.123/retail-ops",
+  "version": "1.0.0",
+  "description": "智能零售运营中台",
+  "main": "serve.js",
+  "scripts": {
+    "dev": "NODE_ENV=local nodemon ./serve.js",
+    "build:local": "NODE_ENV=local node --max_old_space_size=4096 ./build.js",
+    "build:prod": "NODE_ENV=prod node ./build.js",
+    "start:prod": "NODE_ENV=production node ./serve.js",
+    "lint": "echo \"lint: skip until eslint configured\""
+  },
+  "author": "leon",
+  "license": "ISC",
+  "dependencies": {
+    "@lh199.123/elpis": "file:../elpis"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
