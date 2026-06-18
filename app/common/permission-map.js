@@ -59,4 +59,24 @@ module.exports = {
   'POST /api/proj/product/submit_review': 'product:submit_review',
   'POST /api/proj/product/on_sale': 'product:on_sale',
   'POST /api/proj/product/off_sale': 'product:off_sale',
+
+  'GET /api/proj/warehouse/list': 'warehouse:view',
+  'GET /api/proj/warehouse': 'warehouse:view',
+  'POST /api/proj/warehouse': 'warehouse:create',
+  'PUT /api/proj/warehouse': 'warehouse:update',
+  'GET /api/proj/warehouse/layout': 'warehouse:view',
+
+  'GET /api/proj/warehouse/location/list': 'warehouse:view',
+  'GET /api/proj/warehouse/location': 'warehouse:view',
+  'POST /api/proj/warehouse/location': 'warehouse:location:update',
+  'PUT /api/proj/warehouse/location': 'warehouse:location:update',
+
+  'GET /api/proj/stock/list': 'stock:view',
+  'GET /api/proj/stock/location_list': 'stock:view',
+  'GET /api/proj/stock/location/list': 'stock:view',
+  'GET /api/proj/stock/log_list': 'stock:view',
+  'POST /api/proj/stock/inbound': 'stock:inbound',
+  'POST /api/proj/stock/lock': 'stock:lock',
+  'POST /api/proj/stock/unlock': 'stock:lock',
+  'POST /api/proj/stock/outbound': 'stock:outbound',
 }

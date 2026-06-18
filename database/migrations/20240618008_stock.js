@@ -1,0 +1,65 @@
+exports.up = async (knex) => {
+  await knex.schema.createTable('stocks', (t) => {
+    t.string('stock_id', 64).primary()
+    t.string('tenant_id', 64).notNullable().index()
+    t.string('sku_id', 64).notNullable()
+    t.string('warehouse_id', 64).notNullable()
+    t.integer('total_qty').notNullable().defaultTo(0)
+    t.integer('available_qty').notNullable().defaultTo(0)
+    t.integer('locked_qty').notNullable().defaultTo(0)
+    t.integer('in_transit_qty').notNullable().defaultTo(0)
+    t.integer('warning_qty').defaultTo(10)
+    t.integer('version').notNullable().defaultTo(0)
+    t.timestamps(true, true)
+    t.unique(['tenant_id', 'sku_id', 'warehouse_id'])
+    t.index(['tenant_id', 'warehouse_id'])
+  })
+
+  await knex.schema.createTable('stock_locations', (t) => {
+    t.string('stock_location_id', 64).primary()
+    t.string('tenant_id', 64).notNullable().index()
+    t.string('location_id', 64).notNullable()
+    t.string('sku_id', 64).notNullable()
+    t.integer('qty').notNullable().defaultTo(0)
+    t.timestamps(true, true)
+    t.unique(['tenant_id', 'location_id', 'sku_id'])
+  })
+
+  await knex.schema.createTable('stock_logs', (t) => {
+    t.string('log_id', 64).primary()
+    t.string('tenant_id', 64).notNullable().index()
+    t.string('sku_id', 64).notNullable().index()
+    t.string('warehouse_id', 64).notNullable().index()
+    t.string('location_id', 64).nullable()
+    t.string('action_type', 32).notNullable()
+    t.integer('qty_change').notNullable()
+    t.integer('before_qty').notNullable()
+    t.integer('after_qty').notNullable()
+    t.string('ref_type', 64).nullable()
+    t.string('ref_id', 64).nullable()
+    t.string('operator_id', 64).nullable()
+    t.string('remark', 255).nullable()
+    t.timestamp('created_at').defaultTo(knex.fn.now())
+    t.index(['tenant_id', 'sku_id', 'created_at'])
+  })
+
+  await knex.schema.createTable('stock_locks', (t) => {
+    t.string('lock_id', 64).primary()
+    t.string('tenant_id', 64).notNullable().index()
+    t.string('sku_id', 64).notNullable().index()
+    t.string('warehouse_id', 64).notNullable().index()
+    t.integer('qty').notNullable()
+    t.string('ref_type', 64).notNullable()
+    t.string('ref_id', 64).notNullable()
+    t.string('status', 32).notNullable().defaultTo('active')
+    t.timestamps(true, true)
+    t.index(['tenant_id', 'ref_type', 'ref_id'])
+  })
+}
+
+exports.down = async (knex) => {
+  await knex.schema.dropTableIfExists('stock_locks')
+  await knex.schema.dropTableIfExists('stock_logs')
+  await knex.schema.dropTableIfExists('stock_locations')
+  await knex.schema.dropTableIfExists('stocks')
+}

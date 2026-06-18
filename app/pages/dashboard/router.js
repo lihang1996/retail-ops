@@ -17,4 +17,8 @@ module.exports = ({ routes, siderRoutes }) => {
     path: 'org-role-perm',
     component: () => import('./org-admin/org-role-perm.vue'),
   })
+  siderRoutes.push({
+    path: 'stock-inbound',
+    component: () => import('./stock-admin/stock-inbound.vue'),
+  })
 }

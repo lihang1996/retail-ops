@@ -28,6 +28,7 @@ const entries = ref([])
 const ALL_ENTRIES = [
   { key: 'overview', menu: 'menu:overview', name: '经营总览', desc: 'GMV、订单、库存风险', path: '/view/dashboard/overview?proj_key=retail' },
   { key: 'fulfillment', menu: 'menu:fulfillment', name: '履约中心', desc: '订单分仓、拣货、出库', path: '/view/dashboard/fulfillment?proj_key=retail' },
+  { key: 'warehouse', menu: 'menu:fulfillment', name: '仓储管理', desc: '仓库、库位、库存与入库', path: '/view/dashboard/sider/schema?proj_key=retail&key=warehouse&sider_key=stock_inbound' },
   { key: 'ai', menu: 'menu:ai', name: 'AI 工作台', desc: '经营分析与智能问答', path: '/view/dashboard/ai-workbench?proj_key=retail' },
   { key: 'product', menu: 'menu:product', name: '商品管理', desc: '店铺、类目、品牌、商品建档', path: '/view/dashboard/sider/schema?proj_key=retail&key=product&sider_key=product_item' },
   { key: 'org', menu: 'menu:org', name: '组织管理', desc: '部门、用户、角色与权限', path: '/view/dashboard/sider/schema?proj_key=retail&key=org&sider_key=org_department' },

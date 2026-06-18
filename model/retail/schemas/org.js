@@ -168,8 +168,17 @@ const roleSchema = {
   required: ['role_code', 'role_name'],
 }
 
-function buildSchemaModule({ key, name, api, schema, rowButtons }) {
+function buildSchemaModule({ key, name, api, schema, rowButtons, headerButtons }) {
   const mainKey = Object.keys(schema.properties).find((k) => k.endsWith('_id'))
+  const defaultHeader = [
+    {
+      label: `新增${name.replace('管理', '')}`,
+      eventKey: 'showComponent',
+      eventOption: { comName: 'createForm' },
+      type: 'primary',
+      plain: true,
+    },
+  ]
   return {
     key,
     name,
@@ -179,15 +188,7 @@ function buildSchemaModule({ key, name, api, schema, rowButtons }) {
       api,
       schema,
       tableConfig: {
-        headerButtons: [
-          {
-            label: `新增${name.replace('管理', '')}`,
-            eventKey: 'showComponent',
-            eventOption: { comName: 'createForm' },
-            type: 'primary',
-            plain: true,
-          },
-        ],
+        headerButtons: headerButtons !== undefined ? headerButtons : defaultHeader,
         rowButtons: rowButtons || [
           {
             label: '修改',

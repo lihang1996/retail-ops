@@ -29,6 +29,14 @@ const PERMISSIONS = [
   { permission_id: 'perm_product_submit', permission_code: 'product:submit_review', permission_type: 'action', description: '提交审核' },
   { permission_id: 'perm_product_on_sale', permission_code: 'product:on_sale', permission_type: 'action', description: '上架商品' },
   { permission_id: 'perm_product_off_sale', permission_code: 'product:off_sale', permission_type: 'action', description: '下架商品' },
+  { permission_id: 'perm_warehouse_view', permission_code: 'warehouse:view', permission_type: 'action', description: '查看仓库' },
+  { permission_id: 'perm_warehouse_create', permission_code: 'warehouse:create', permission_type: 'action', description: '创建仓库' },
+  { permission_id: 'perm_warehouse_update', permission_code: 'warehouse:update', permission_type: 'action', description: '编辑仓库' },
+  { permission_id: 'perm_warehouse_loc', permission_code: 'warehouse:location:update', permission_type: 'action', description: '编辑库位' },
+  { permission_id: 'perm_stock_view', permission_code: 'stock:view', permission_type: 'action', description: '查看库存' },
+  { permission_id: 'perm_stock_inbound', permission_code: 'stock:inbound', permission_type: 'action', description: '入库' },
+  { permission_id: 'perm_stock_lock', permission_code: 'stock:lock', permission_type: 'action', description: '锁定库存' },
+  { permission_id: 'perm_stock_outbound', permission_code: 'stock:outbound', permission_type: 'action', description: '出库' },
 ]
 
 const ORG_PERMS = [
@@ -56,6 +64,18 @@ const PRODUCT_PERMS = [
   'perm_product_off_sale',
 ]
 
+const WAREHOUSE_PERMS = [
+  'perm_warehouse_view',
+  'perm_warehouse_create',
+  'perm_warehouse_update',
+  'perm_warehouse_loc',
+  'perm_stock_view',
+  'perm_stock_inbound',
+  'perm_stock_lock',
+  'perm_stock_outbound',
+  'perm_product_view',
+]
+
 const ROLE_DEFS = [
   {
     role_id: 'role_admin',
@@ -73,7 +93,7 @@ const ROLE_DEFS = [
     role_id: 'role_warehouse',
     role_code: 'warehouse',
     role_name: '仓库主管',
-    perms: ['perm_menu_fulfillment', 'perm_menu_overview'],
+    perms: ['perm_menu_fulfillment', 'perm_menu_overview', ...WAREHOUSE_PERMS],
   },
   {
     role_id: 'role_finance',

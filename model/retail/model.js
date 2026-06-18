@@ -1,11 +1,13 @@
 const { deptSchema, userSchema, roleSchema, buildSchemaModule } = require('./schemas/org')
 const { buildProductMenu } = require('./schemas/product')
+const { buildWarehouseMenu } = require('./schemas/warehouse')
 
 module.exports = {
   mode: 'dashboard',
   name: '零售运营中台',
   menu: [
     buildProductMenu(),
+    buildWarehouseMenu(),
     {
       key: 'org',
       name: '组织管理',
