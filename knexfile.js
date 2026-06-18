@@ -5,7 +5,7 @@ let envConfig = {}
 try {
   if (process.env.NODE_ENV === 'local') {
     envConfig = require('./config/config.local')
-  } else if (process.env.NODE_ENV === 'production') {
+  } else if (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'prod') {
     envConfig = require('./config/config.prod')
   }
 } catch (e) {

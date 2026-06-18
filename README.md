@@ -11,13 +11,17 @@ cd ../elpis && npm install
 # 2. 再安装业务项目依赖
 cd ../retail-ops && npm install
 
-# 3. 启动开发服务
+# 3. 数据库初始化
+npm run migrate && npm run seed
+
+# 4. 构建并启动
+npm run build:prod
 npm run dev
 ```
 
 访问：http://localhost:8080/view/login
 
-演示账号（需先执行 `npm run migrate && npm run seed`）：
+演示账号：
 
 | 账号 | 密码 | 角色 |
 |---|---|---|
@@ -30,13 +34,51 @@ npm run dev
 ```bash
 npm run build:local   # 本地构建（NODE_ENV=local）
 npm run build:prod    # 生产构建（NODE_ENV=prod）
-npm run start:prod    # 生产运行（NODE_ENV=production）
+npm run start:prod    # 生产运行（NODE_ENV=production，需配置 DB）
+```
+
+## Docker 部署（M1-14）
+
+使用 monorepo 构建上下文（`dom/` 目录下同时有 `elpis/` 与 `retail-ops/`）：
+
+```bash
+# 可选：加速构建，将 dockerignore 模板复制到父目录
+cp deploy/parent.dockerignore ../.dockerignore
+
+# 在 retail-ops 目录
+cp .env.example .env   # 按需修改 JWT_SECRET 等
+docker compose up -d --build
+```
+
+启动后访问：
+
+- 登录页：http://localhost:8080/view/login
+- 健康检查：http://localhost:8080/health
+
+容器首次启动会自动执行 `migrate` + `seed`（见 `scripts/init-db.js`）。
+
+### VPS + HTTPS（Caddy）
+
+1. 在 VPS 上 `docker compose up -d --build` 跑通应用（端口 8080）
+2. 安装 Caddy，参考 `deploy/Caddyfile.example` 配置反代与自动 HTTPS
+3. 将域名 DNS 解析到 VPS
+
+### 手动构建镜像
+
+```bash
+# 在 dom/ 父目录
+docker build -f retail-ops/Dockerfile -t retail-ops .
+docker run -p 8080:8080 \
+  -e DB_HOST=host.docker.internal \
+  -e DB_USER=retail -e DB_PASSWORD=retail123 -e DB_NAME=retail_ops \
+  -e JWT_SECRET=your-secret \
+  retail-ops
 ```
 
 ## 依赖说明
 
-- 开发期使用 `"@lh199.123/elpis": "file:../elpis"` 本地引用
-- CI/Docker 上线前需改为已发布的 npm 版本，或使用 monorepo 构建上下文
+- **本地开发**：`"@lh199.123/elpis": "file:../elpis"`
+- **Docker / CI**：使用 monorepo 构建上下文（见 `Dockerfile`），或改为已发布的 npm 版本
 
 ## 文档
 

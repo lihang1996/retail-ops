@@ -1,0 +1,11 @@
+# 复制到 dom/ 目录作为 .dockerignore（monorepo 构建上下文）
+# cp retail-ops/deploy/parent.dockerignore ../.dockerignore
+
+**/node_modules
+**/.git
+**/logs
+**/*.log
+**/.env
+**/.DS_Store
+**/coverage
+retail-ops/app/public/dist/prod
