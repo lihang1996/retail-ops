@@ -13,6 +13,7 @@ module.exports = (app) => {
           object_id: objectId || null,
           request_id: ctx?.request?.headers?.['x-request-id'] || null,
           ip: ctx?.ip || null,
+          user_agent: ctx?.headers?.['user-agent'] || null,
           detail_json: detail ? JSON.stringify(detail) : null,
         })
       } catch (e) {

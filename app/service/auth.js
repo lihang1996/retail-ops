@@ -124,11 +124,13 @@ module.exports = (app) => {
       }
     }
 
-    async getPermissionSnapshot({ userId }) {
+    async getPermissionSnapshot({ userId, tenantId }) {
       const rows = await app.db('permissions as p')
         .join('role_permissions as rp', 'p.permission_id', 'rp.permission_id')
         .join('user_roles as ur', 'rp.role_id', 'ur.role_id')
+        .join('roles as r', 'ur.role_id', 'r.role_id')
         .where('ur.user_id', userId)
+        .andWhere('r.tenant_id', tenantId)
         .select('p.permission_code', 'p.permission_type')
 
       const menus = []

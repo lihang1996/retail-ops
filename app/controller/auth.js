@@ -40,7 +40,10 @@ module.exports = (app) => {
 
     async permissions(ctx) {
       const user = ctx.state.user
-      const data = await app.service.auth.getPermissionSnapshot({ userId: user.user_id })
+      const data = await app.service.auth.getPermissionSnapshot({
+        userId: user.user_id,
+        tenantId: user.tenant_id,
+      })
       this.success(ctx, data)
     }
   }

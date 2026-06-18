@@ -9,7 +9,6 @@ module.exports = (app) => {
     const key = `${ctx.method} ${ctx.path}`
     const required = permissionMap[key]
 
-    // null 表示登录即可；undefined 表示暂未配置，开发期放行
     if (required === undefined) {
       return next()
     }
@@ -18,14 +17,17 @@ module.exports = (app) => {
     }
 
     const userId = ctx.state.user?.user_id
-    if (!userId || !app.db) {
+    const tenantId = ctx.state.user?.tenant_id
+    if (!userId || !tenantId || !app.db) {
       return next()
     }
 
     const row = await app.db('permissions as p')
       .join('role_permissions as rp', 'p.permission_id', 'rp.permission_id')
       .join('user_roles as ur', 'rp.role_id', 'ur.role_id')
+      .join('roles as r', 'ur.role_id', 'r.role_id')
       .where('ur.user_id', userId)
+      .andWhere('r.tenant_id', tenantId)
       .andWhere('p.permission_code', required)
       .first()
 
