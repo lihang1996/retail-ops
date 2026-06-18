@@ -20,22 +20,31 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import HeaderContainer from '$elpisHeaderContainer'
+import { apiRequest, getToken } from '$retailAuth'
 
 const loading = ref(true)
 const entries = ref([])
 
-// 占位数据，M1 后按权限动态加载
-const mockEntries = [
-  { key: 'overview', name: '经营总览', desc: 'GMV、订单、库存风险', path: '/view/dashboard/overview?proj_key=retail' },
-  { key: 'fulfillment', name: '履约中心', desc: '订单分仓、拣货、出库', path: '/view/dashboard/fulfillment?proj_key=retail' },
-  { key: 'ai', name: 'AI 工作台', desc: '经营分析与智能问答', path: '/view/dashboard/ai-workbench?proj_key=retail' },
+const ALL_ENTRIES = [
+  { key: 'overview', menu: 'menu:overview', name: '经营总览', desc: 'GMV、订单、库存风险', path: '/view/dashboard/overview?proj_key=retail' },
+  { key: 'fulfillment', menu: 'menu:fulfillment', name: '履约中心', desc: '订单分仓、拣货、出库', path: '/view/dashboard/fulfillment?proj_key=retail' },
+  { key: 'ai', menu: 'menu:ai', name: 'AI 工作台', desc: '经营分析与智能问答', path: '/view/dashboard/ai-workbench?proj_key=retail' },
 ]
 
-onMounted(() => {
-  setTimeout(() => {
-    entries.value = mockEntries
+onMounted(async () => {
+  if (!getToken()) {
+    window.location.href = '/view/login'
+    return
+  }
+  try {
+    const { data } = await apiRequest('/api/auth/permissions')
+    const menus = data.menus || []
+    entries.value = ALL_ENTRIES.filter((e) => menus.includes(e.menu))
+  } catch {
+    entries.value = []
+  } finally {
     loading.value = false
-  }, 300)
+  }
 })
 
 const goEntry = (item) => {

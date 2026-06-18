@@ -8,13 +8,13 @@
 
       <el-form label-position="top" @submit.prevent="onSubmit">
         <el-form-item label="账号">
-          <el-input v-model="account" placeholder="请输入账号" clearable />
+          <el-input v-model="account" placeholder="admin@retail.demo" clearable />
         </el-form-item>
         <el-form-item label="密码">
           <el-input
             v-model="password"
             type="password"
-            placeholder="请输入密码"
+            placeholder="demo123"
             show-password
             @keyup.enter="onSubmit"
           />
@@ -27,36 +27,79 @@
           :closable="false"
           class="login-error"
         />
-        <el-button
-          type="primary"
-          class="login-btn"
-          :loading="loading"
-          @click="onSubmit"
-        >
+        <el-button type="primary" class="login-btn" :loading="loading" @click="onSubmit">
           登录
         </el-button>
       </el-form>
 
-      <div class="login-tip">演示账号将在 M1 接入后提供</div>
+      <div class="demo-accounts">
+        <span class="tip">演示账号（密码均为 demo123）：</span>
+        <el-button
+          v-for="item in demoAccounts"
+          :key="item.account"
+          size="small"
+          link
+          type="primary"
+          @click="fillDemo(item)"
+        >
+          {{ item.label }}
+        </el-button>
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { setToken, getToken } from '$retailAuth'
 
 const account = ref('')
 const password = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
 
-const onSubmit = () => {
+const demoAccounts = [
+  { label: '管理员', account: 'admin@retail.demo' },
+  { label: '运营', account: 'ops@retail.demo' },
+  { label: '仓库', account: 'warehouse@retail.demo' },
+]
+
+onMounted(() => {
+  if (getToken()) {
+    window.location.href = '/view/project-list'
+  }
+})
+
+const fillDemo = (item) => {
+  account.value = item.account
+  password.value = 'demo123'
+}
+
+const onSubmit = async () => {
   if (!account.value || !password.value) {
     errorMsg.value = '请输入账号和密码'
     return
   }
-  // M1 接入真实登录 API
-  errorMsg.value = '登录功能开发中，请等待 M1 完成'
+  loading.value = true
+  errorMsg.value = ''
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: account.value, password: password.value }),
+    })
+    const data = await res.json()
+    if (!data.success) {
+      errorMsg.value = data.message || '登录失败'
+      return
+    }
+    setToken(data.data.token)
+    window.location.href = data.data.defaultEntry || '/view/project-list'
+  } catch {
+    errorMsg.value = '网络异常，请稍后重试'
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
@@ -74,7 +117,6 @@ const onSubmit = () => {
 .login-title {
   font-size: 22px;
   font-weight: bold;
-  color: #303133;
 }
 .login-subtitle {
   font-size: 13px;
@@ -88,10 +130,13 @@ const onSubmit = () => {
 .login-error {
   margin-bottom: 12px;
 }
-.login-tip {
+.demo-accounts {
   margin-top: 16px;
   font-size: 12px;
   color: #909399;
-  text-align: center;
+  .tip {
+    display: block;
+    margin-bottom: 6px;
+  }
 }
 </style>

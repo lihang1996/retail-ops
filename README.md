@@ -17,6 +17,14 @@ npm run dev
 
 访问：http://localhost:8080/view/login
 
+演示账号（需先执行 `npm run migrate && npm run seed`）：
+
+| 账号 | 密码 | 角色 |
+|---|---|---|
+| admin@retail.demo | demo123 | 管理员 |
+| ops@retail.demo | demo123 | 运营 |
+| warehouse@retail.demo | demo123 | 仓库 |
+
 ## 构建
 
 ```bash
