@@ -1,2 +1,2 @@
-// 业务全局中间件注册（elpis 基础中间件已在框架内加载）
+// 业务全局中间件（elpis 已通过 extend/logger.js 提供 app.logger）
 module.exports = (app) => {}
