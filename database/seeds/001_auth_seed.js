@@ -18,6 +18,17 @@ const PERMISSIONS = [
   { permission_id: 'perm_org_role_create', permission_code: 'org:role:create', permission_type: 'action', description: '创建角色' },
   { permission_id: 'perm_org_role_update', permission_code: 'org:role:update', permission_type: 'action', description: '编辑角色' },
   { permission_id: 'perm_org_role_perm', permission_code: 'org:role:permission:update', permission_type: 'action', description: '修改角色权限' },
+  { permission_id: 'perm_store_view', permission_code: 'store:view', permission_type: 'action', description: '查看店铺' },
+  { permission_id: 'perm_store_create', permission_code: 'store:create', permission_type: 'action', description: '创建店铺' },
+  { permission_id: 'perm_store_update', permission_code: 'store:update', permission_type: 'action', description: '编辑店铺' },
+  { permission_id: 'perm_store_disable', permission_code: 'store:disable', permission_type: 'action', description: '停用店铺' },
+  { permission_id: 'perm_product_view', permission_code: 'product:view', permission_type: 'action', description: '查看商品' },
+  { permission_id: 'perm_product_create', permission_code: 'product:create', permission_type: 'action', description: '创建商品' },
+  { permission_id: 'perm_product_update', permission_code: 'product:update', permission_type: 'action', description: '编辑商品' },
+  { permission_id: 'perm_product_delete', permission_code: 'product:delete', permission_type: 'action', description: '删除商品' },
+  { permission_id: 'perm_product_submit', permission_code: 'product:submit_review', permission_type: 'action', description: '提交审核' },
+  { permission_id: 'perm_product_on_sale', permission_code: 'product:on_sale', permission_type: 'action', description: '上架商品' },
+  { permission_id: 'perm_product_off_sale', permission_code: 'product:off_sale', permission_type: 'action', description: '下架商品' },
 ]
 
 const ORG_PERMS = [
@@ -32,6 +43,19 @@ const ORG_PERMS = [
   'perm_org_role_perm',
 ]
 
+const PRODUCT_PERMS = [
+  'perm_store_view',
+  'perm_store_create',
+  'perm_store_update',
+  'perm_product_view',
+  'perm_product_create',
+  'perm_product_update',
+  'perm_product_delete',
+  'perm_product_submit',
+  'perm_product_on_sale',
+  'perm_product_off_sale',
+]
+
 const ROLE_DEFS = [
   {
     role_id: 'role_admin',
@@ -43,7 +67,7 @@ const ROLE_DEFS = [
     role_id: 'role_ops',
     role_code: 'ops',
     role_name: '运营',
-    perms: ['perm_menu_overview', 'perm_menu_product', 'perm_menu_fulfillment'],
+    perms: ['perm_menu_overview', 'perm_menu_product', 'perm_menu_fulfillment', ...PRODUCT_PERMS],
   },
   {
     role_id: 'role_warehouse',

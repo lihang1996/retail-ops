@@ -28,4 +28,35 @@ module.exports = {
 
   'GET /api/proj/permission/list': 'org:role:permission:update',
   'GET /api/proj/permission/tree': 'org:role:permission:update',
+
+  'GET /api/proj/store/list': 'store:view',
+  'GET /api/proj/store': 'store:view',
+  'POST /api/proj/store': 'store:create',
+  'PUT /api/proj/store': 'store:update',
+  'DELETE /api/proj/store': 'store:disable',
+
+  'GET /api/proj/category/list': 'product:view',
+  'GET /api/proj/category': 'product:view',
+  'POST /api/proj/category': 'product:create',
+  'PUT /api/proj/category': 'product:update',
+
+  'GET /api/proj/brand/list': 'product:view',
+  'GET /api/proj/brand': 'product:view',
+  'POST /api/proj/brand': 'product:create',
+  'PUT /api/proj/brand': 'product:update',
+
+  'GET /api/proj/product/list': 'product:view',
+  'GET /api/proj/product': 'product:view',
+  'POST /api/proj/product': 'product:create',
+  'PUT /api/proj/product': 'product:update',
+  'DELETE /api/proj/product': 'product:delete',
+
+  'GET /api/proj/product/sku_list': 'product:view',
+  'POST /api/proj/product/sku': 'product:update',
+  'PUT /api/proj/product/sku': 'product:update',
+  'DELETE /api/proj/product/sku': 'product:update',
+
+  'POST /api/proj/product/submit_review': 'product:submit_review',
+  'POST /api/proj/product/on_sale': 'product:on_sale',
+  'POST /api/proj/product/off_sale': 'product:off_sale',
 }

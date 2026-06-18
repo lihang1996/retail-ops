@@ -59,6 +59,17 @@ async function assertDeptInTenant(db, tenantId, deptId) {
   if (!dept) bizError('部门不存在', 40400)
 }
 
+async function assertRowInTenant(db, table, tenantId, idField, id, label = '记录') {
+  if (!id) return null
+  const row = await db(table).where({ tenant_id: tenantId, [idField]: id }).first()
+  if (!row) bizError(`${label}不存在`, 40400)
+  return row
+}
+
+function activeOnly(qb) {
+  return qb.whereNull('deleted_at')
+}
+
 module.exports = {
   idGen,
   ensureDb,
@@ -68,4 +79,6 @@ module.exports = {
   audit,
   syncUserRoles,
   assertDeptInTenant,
+  assertRowInTenant,
+  activeOnly,
 }
