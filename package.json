@@ -13,7 +13,10 @@
   "author": "leon",
   "license": "ISC",
   "dependencies": {
-    "@lh199.123/elpis": "file:../elpis"
+    "@lh199.123/elpis": "file:../elpis",
+    "ioredis": "^5.4.1",
+    "knex": "^3.1.0",
+    "mysql2": "^3.11.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
