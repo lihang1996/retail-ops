@@ -51,6 +51,15 @@ module.exports = {
       },
     },
   },
+  '/api/proj/warehouse/risk_map': {
+    get: {
+      query: {
+        type: 'object',
+        properties: { warehouse_id: { type: 'string' } },
+        required: ['warehouse_id'],
+      },
+    },
+  },
   '/api/proj/warehouse/location/list': {
     get: {
       query: {

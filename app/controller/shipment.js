@@ -33,5 +33,10 @@ module.exports = (app) => {
       const data = await app.service.shipment.ship(ctx, ctx.request.body)
       this.success(ctx, data)
     })
+
+    pickingRoute = wrap(async function pickingRoute(ctx) {
+      const data = await app.service.shipment.getPickingRoute(ctx, ctx.request.query)
+      this.success(ctx, data)
+    })
   }
 }

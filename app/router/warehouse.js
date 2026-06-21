@@ -5,6 +5,7 @@ module.exports = (app, router) => {
   router.post('/api/proj/warehouse', c.create.bind(c))
   router.put('/api/proj/warehouse', c.update.bind(c))
   router.get('/api/proj/warehouse/layout', c.layout.bind(c))
+  router.get('/api/proj/warehouse/risk_map', c.riskMap.bind(c))
 
   router.get('/api/proj/warehouse/location/list', c.locationList.bind(c))
   router.get('/api/proj/warehouse/location', c.locationGet.bind(c))

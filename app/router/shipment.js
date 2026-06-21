@@ -6,4 +6,5 @@ module.exports = (app, router) => {
   router.post('/api/proj/shipment/start_pick', c.startPick.bind(c))
   router.post('/api/proj/shipment/confirm_pick', c.confirmPick.bind(c))
   router.post('/api/proj/shipment/ship', c.ship.bind(c))
+  router.get('/api/proj/shipment/picking_route', c.pickingRoute.bind(c))
 }

@@ -12,6 +12,10 @@ module.exports = ({ routes, siderRoutes }) => {
     path: '/view/dashboard/ai-workbench',
     component: () => import('./ai-workbench/ai-workbench.vue'),
   })
+  routes.push({
+    path: '/view/dashboard/warehouse-3d',
+    component: () => import('./warehouse-3d/warehouse-3d.vue'),
+  })
 
   siderRoutes.push({
     path: 'org-role-perm',

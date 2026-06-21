@@ -6,6 +6,7 @@ const {
   idGen,
   assertRowInTenant,
 } = require('../common/org-helper')
+const { computeLocationRisk } = require('../common/warehouse-3d-helper')
 
 module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
@@ -100,7 +101,40 @@ module.exports = (app) => {
       const tenantId = getTenantId(ctx)
       const { location_id: locationId } = query
       if (!locationId) bizError('location_id 不能为空')
-      return assertRowInTenant(db, 'warehouse_locations', tenantId, 'location_id', locationId, '库位')
+
+      const location = await assertRowInTenant(
+        db,
+        'warehouse_locations',
+        tenantId,
+        'location_id',
+        locationId,
+        '库位'
+      )
+
+      const skus = await db('stock_locations as sl')
+        .join('product_skus as sku', 'sl.sku_id', 'sku.sku_id')
+        .leftJoin('products as p', 'sku.product_id', 'p.product_id')
+        .where('sl.tenant_id', tenantId)
+        .andWhere('sl.location_id', locationId)
+        .select('sl.qty', 'sku.sku_id', 'sku.sku_code', 'p.product_name')
+
+      const totalQty = skus.reduce((sum, row) => sum + (row.qty || 0), 0)
+      const riskLevel = computeLocationRisk(totalQty, location.capacity)
+
+      const logs = await db('stock_logs as l')
+        .leftJoin('product_skus as sku', 'l.sku_id', 'sku.sku_id')
+        .where('l.tenant_id', tenantId)
+        .andWhere('l.location_id', locationId)
+        .select('l.action_type', 'l.qty_change', 'l.created_at', 'sku.sku_code')
+        .orderBy('l.created_at', 'desc')
+        .limit(10)
+
+      return {
+        location,
+        skus,
+        risk: { level: riskLevel, totalQty, capacity: location.capacity },
+        recentLogs: logs,
+      }
     }
 
     async createLocation(ctx, body = {}) {
@@ -188,11 +222,65 @@ module.exports = (app) => {
       if (!warehouseId) bizError('warehouse_id 不能为空')
 
       const warehouse = await assertRowInTenant(db, 'warehouses', tenantId, 'warehouse_id', warehouseId, '仓库')
+      const zones = await db('warehouse_zones')
+        .where({ tenant_id: tenantId, warehouse_id: warehouseId, status: 'active' })
+        .select('zone_id', 'zone_name', 'zone_code')
+      const shelves = await db('warehouse_shelves')
+        .where({ tenant_id: tenantId, warehouse_id: warehouseId, status: 'active' })
+        .select('shelf_id', 'zone_id', 'shelf_name', 'shelf_code')
       const locations = await db('warehouse_locations')
         .where({ tenant_id: tenantId, warehouse_id: warehouseId, status: 'active' })
-        .select('location_id', 'location_code', 'pos_x', 'pos_y', 'pos_z', 'capacity')
+        .select(
+          'location_id',
+          'location_code',
+          'zone_id',
+          'shelf_id',
+          'pos_x',
+          'pos_y',
+          'pos_z',
+          'capacity'
+        )
 
-      return { warehouse, locations }
+      return { warehouse, zones, shelves, locations }
+    }
+
+    async getRiskMap(ctx, query = {}) {
+      const db = ensureDb(app)
+      const tenantId = getTenantId(ctx)
+      const { warehouse_id: warehouseId } = query
+      if (!warehouseId) bizError('warehouse_id 不能为空')
+
+      await assertRowInTenant(db, 'warehouses', tenantId, 'warehouse_id', warehouseId, '仓库')
+
+      const locations = await db('warehouse_locations')
+        .where({ tenant_id: tenantId, warehouse_id: warehouseId, status: 'active' })
+        .select('location_id', 'capacity')
+
+      if (!locations.length) return { warehouseId, riskMap: {} }
+
+      const qtyRows = await db('stock_locations')
+        .where({ tenant_id: tenantId })
+        .whereIn(
+          'location_id',
+          locations.map((l) => l.location_id)
+        )
+        .groupBy('location_id')
+        .select('location_id')
+        .sum('qty as total_qty')
+
+      const qtyMap = new Map(qtyRows.map((r) => [r.location_id, parseInt(r.total_qty, 10) || 0]))
+      const riskMap = {}
+
+      for (const loc of locations) {
+        const qty = qtyMap.get(loc.location_id) || 0
+        riskMap[loc.location_id] = {
+          level: computeLocationRisk(qty, loc.capacity),
+          qty,
+          capacity: loc.capacity,
+        }
+      }
+
+      return { warehouseId, riskMap }
     }
   }
 }

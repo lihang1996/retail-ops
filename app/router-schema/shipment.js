@@ -59,4 +59,13 @@ module.exports = {
       },
     },
   },
+  '/api/proj/shipment/picking_route': {
+    get: {
+      query: {
+        type: 'object',
+        properties: { shipment_id: { type: 'string' } },
+        required: ['shipment_id'],
+      },
+    },
+  },
 }

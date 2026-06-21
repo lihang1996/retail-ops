@@ -65,6 +65,7 @@ module.exports = {
   'POST /api/proj/warehouse': 'warehouse:create',
   'PUT /api/proj/warehouse': 'warehouse:update',
   'GET /api/proj/warehouse/layout': 'warehouse:view',
+  'GET /api/proj/warehouse/risk_map': 'warehouse:view',
 
   'GET /api/proj/warehouse/location/list': 'warehouse:view',
   'GET /api/proj/warehouse/location': 'warehouse:view',
@@ -93,4 +94,5 @@ module.exports = {
   'POST /api/proj/shipment/start_pick': 'shipment:pick',
   'POST /api/proj/shipment/confirm_pick': 'shipment:pick',
   'POST /api/proj/shipment/ship': 'shipment:ship',
+  'GET /api/proj/shipment/picking_route': 'shipment:view',
 }

@@ -48,5 +48,10 @@ module.exports = (app) => {
       const data = await app.service.warehouse.getLayout(ctx, ctx.request.query)
       this.success(ctx, data)
     })
+
+    riskMap = wrap(async function riskMap(ctx) {
+      const data = await app.service.warehouse.getRiskMap(ctx, ctx.request.query)
+      this.success(ctx, data)
+    })
   }
 }

@@ -67,11 +67,17 @@
         <el-table-column prop="order_no" label="订单号" width="180" />
         <el-table-column prop="warehouse_name" label="仓库" width="120" />
         <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column label="操作" width="320">
+        <el-table-column label="操作" width="400">
           <template #default="{ row }">
             <el-button v-if="row.status === 'created'" type="primary" link @click="startPick(row)">开始拣货</el-button>
             <el-button v-if="row.status === 'picking'" type="warning" link @click="confirmPick(row)">确认拣货</el-button>
             <el-button v-if="row.status === 'picked'" type="success" link @click="ship(row)">出库发货</el-button>
+            <el-button
+              v-if="['picking', 'picked', 'created'].includes(row.status)"
+              type="info"
+              link
+              @click="open3d(row)"
+            >3D 拣货</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -210,6 +216,12 @@ async function ship(row) {
   } else {
     toast(res?.message || '发货失败', 'error')
   }
+}
+
+function open3d(row) {
+  const wh = row.warehouse_id || 'wh_main'
+  const url = `/view/dashboard/warehouse-3d?proj_key=retail&warehouse_id=${wh}&shipment_id=${row.shipment_id}`
+  window.open(url, '_blank')
 }
 
 onMounted(loadAll)

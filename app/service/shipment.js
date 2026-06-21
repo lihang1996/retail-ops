@@ -257,5 +257,55 @@ module.exports = (app) => {
 
       return { shipmentId, orderId: shipment.order_id }
     }
+
+    async getPickingRoute(ctx, query = {}) {
+      const db = ensureDb(app)
+      const tenantId = getTenantId(ctx)
+      const { shipment_id: shipmentId } = query
+      if (!shipmentId) bizError('shipment_id 不能为空')
+
+      const shipment = await assertRowInTenant(db, 'shipments', tenantId, 'shipment_id', shipmentId, '发货单')
+
+      const items = await db('shipment_items as si')
+        .leftJoin('product_skus as sku', 'si.sku_id', 'sku.sku_id')
+        .where('si.tenant_id', tenantId)
+        .andWhere('si.shipment_id', shipmentId)
+        .select('si.sku_id', 'si.qty', 'sku.sku_code', 'si.suggested_location_id', 'si.picked_location_id')
+
+      const points = []
+      for (const item of items) {
+        const locationId = item.picked_location_id || item.suggested_location_id
+        if (!locationId) continue
+        const loc = await db('warehouse_locations')
+          .where({ tenant_id: tenantId, location_id: locationId })
+          .first()
+        if (!loc) continue
+        points.push({
+          location_id: loc.location_id,
+          location_code: loc.location_code,
+          sku_id: item.sku_id,
+          sku_code: item.sku_code,
+          qty: item.qty,
+          pos_x: parseFloat(loc.pos_x) || 0,
+          pos_y: parseFloat(loc.pos_y) || 0,
+          pos_z: parseFloat(loc.pos_z) || 0,
+        })
+      }
+
+      points.sort((a, b) => {
+        if (a.pos_x !== b.pos_x) return a.pos_x - b.pos_x
+        return a.pos_z - b.pos_z
+      })
+      points.forEach((p, i) => {
+        p.seq = i + 1
+      })
+
+      return {
+        shipmentId,
+        warehouseId: shipment.warehouse_id,
+        shipmentNo: shipment.shipment_no,
+        points,
+      }
+    }
   }
 }
