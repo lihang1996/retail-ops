@@ -1,5 +1,12 @@
+/**
+ * @module common/order-helper
+ * @description 订单与发货状态常量、分仓策略、状态日志、拣货库位建议。
+ * 关键规则：findWarehouseForItems 选各 SKU 均可满足且最小可用量最大的仓库；
+ * 支付后 warehouse_id 固定，分仓沿用不再重选。
+ */
 const { idGen, bizError } = require('./org-helper')
 
+/** 订单状态枚举 */
 const ORDER_STATUS = {
   PENDING_PAYMENT: 'pending_payment',
   PAID: 'paid',
@@ -8,6 +15,7 @@ const ORDER_STATUS = {
   CANCELLED: 'cancelled',
 }
 
+/** 发货单状态枚举 */
 const SHIPMENT_STATUS = {
   CREATED: 'created',
   PICKING: 'picking',
@@ -16,12 +24,14 @@ const SHIPMENT_STATUS = {
   SHIPPED: 'shipped',
 }
 
+/** 生成唯一订单号（时间戳 + 随机后缀） */
 function generateOrderNo() {
   const d = new Date()
   const pad = (n, len = 2) => String(n).padStart(len, '0')
   return `ORD${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}${Math.random().toString(36).slice(2, 6).toUpperCase()}`
 }
 
+/** 写入订单状态变更日志 */
 async function writeOrderStatusLog(trx, payload) {
   await trx('order_status_logs').insert({
     log_id: idGen.next('olog'),
@@ -34,12 +44,14 @@ async function writeOrderStatusLog(trx, payload) {
   })
 }
 
+/** 断言订单当前状态允许执行指定操作 */
 function assertOrderStatus(order, allowed, label = '操作') {
   if (!allowed.includes(order.status)) {
     bizError(`订单状态为 ${order.status}，无法执行${label}`, 40900)
   }
 }
 
+/** 遍历活跃仓库，选取能完全满足明细且最小可用库存最大的仓 */
 async function findWarehouseForItems(trx, tenantId, items) {
   const warehouses = await trx('warehouses')
     .where({ tenant_id: tenantId, status: 'active' })
@@ -76,6 +88,7 @@ async function findWarehouseForItems(trx, tenantId, items) {
   return { warehouse: best, reason: `选择仓库 ${best.warehouse_name}（各 SKU 可用库存均满足，最小可用 ${bestScore}）` }
 }
 
+/** 分仓时优先沿用订单已绑定的 warehouse_id，否则自动选仓 */
 async function resolveWarehouseForOrder(db, tenantId, order, items) {
   if (order.warehouse_id) {
     const warehouse = await db('warehouses')
@@ -87,6 +100,7 @@ async function resolveWarehouseForOrder(db, tenantId, order, items) {
   return findWarehouseForItems(db, tenantId, items)
 }
 
+/** 将订单状态更新为 allocated 并绑定仓库，写状态日志 */
 async function applyOrderAllocation(trx, { tenantId, orderId, fromStatus, warehouse, reason, operatorId }) {
   await trx('orders').where({ order_id: orderId }).update({
     status: ORDER_STATUS.ALLOCATED,
@@ -102,6 +116,7 @@ async function applyOrderAllocation(trx, { tenantId, orderId, fromStatus, wareho
   })
 }
 
+/** 建议拣货库位：取该 SKU 在仓库中 qty 最大的库位 */
 async function suggestLocationForSku(trx, tenantId, warehouseId, skuId) {
   const row = await trx('stock_locations as sl')
     .join('warehouse_locations as loc', 'sl.location_id', 'loc.location_id')

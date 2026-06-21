@@ -1,5 +1,11 @@
+/**
+ * @module common/stock-helper
+ * @description 库存底层操作：流水写入、库存创建、乐观锁更新、库位 qty 增减。
+ * 关键规则：updateStockWithVersion 用 version 字段防并发写冲突；库位 qty 不可为负。
+ */
 const { idGen, bizError } = require('./org-helper')
 
+/** 写入库存变动流水，记录前后数量与关联单据 */
 async function writeStockLog(trx, payload) {
   await trx('stock_logs').insert({
     log_id: idGen.next('slog'),
@@ -18,6 +24,7 @@ async function writeStockLog(trx, payload) {
   })
 }
 
+/** 获取或懒创建仓库-SKU 库存记录（初始 qty 均为 0） */
 async function getOrCreateStock(trx, { tenantId, skuId, warehouseId }) {
   let stock = await trx('stocks')
     .where({ tenant_id: tenantId, sku_id: skuId, warehouse_id: warehouseId })
@@ -41,6 +48,7 @@ async function getOrCreateStock(trx, { tenantId, skuId, warehouseId }) {
   return stock
 }
 
+/** 乐观锁更新库存，version 不匹配则报 409 并发冲突 */
 async function updateStockWithVersion(trx, stock, patch) {
   const affected = await trx('stocks')
     .where({ stock_id: stock.stock_id, version: stock.version })
@@ -49,6 +57,7 @@ async function updateStockWithVersion(trx, stock, patch) {
   if (!affected) bizError('库存并发冲突，请重试', 40900)
 }
 
+/** 增减库位 SKU 数量，不存在则 insert（qtyDelta 须为正） */
 async function upsertLocationQty(trx, { tenantId, locationId, skuId, qtyDelta }) {
   if (!locationId) return
 

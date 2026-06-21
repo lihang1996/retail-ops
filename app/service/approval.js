@@ -1,3 +1,9 @@
+/**
+ * @module service/approval
+ * @description 审批流服务：商品上架等业务的提交、待办、通过/驳回。
+ * 状态流转：pending → approved/rejected；通过 product_on_sale 时联动商品 on_sale。
+ * 关键规则：同一 ref 不可重复 pending；驳回时将商品退回 draft。
+ */
 const {
   ensureDb,
   getTenantId,
@@ -23,6 +29,7 @@ module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
   return class ApprovalService extends BaseService {
+    /** 提交审批，product_on_sale 时同步将商品置 pending_review */
     async submit(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -90,6 +97,7 @@ module.exports = (app) => {
       return { approvalId }
     }
 
+    /** 待办审批列表，默认仅 pending */
     async todoList(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -106,6 +114,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 通过审批，product_on_sale 时触发商品上架 */
     async approve(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -143,6 +152,7 @@ module.exports = (app) => {
       return { approvalId, status: 'approved' }
     }
 
+    /** 驳回审批，商品退回 draft 并标记 review_status=rejected */
     async reject(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)

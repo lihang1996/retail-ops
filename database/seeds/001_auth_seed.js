@@ -9,6 +9,7 @@ const PERMISSIONS = [
   { permission_id: 'perm_menu_product', permission_code: 'menu:product', permission_type: 'menu', description: '商品管理' },
   { permission_id: 'perm_menu_ai', permission_code: 'menu:ai', permission_type: 'menu', description: 'AI 工作台' },
   { permission_id: 'perm_menu_org', permission_code: 'menu:org', permission_type: 'menu', description: '组织管理' },
+  { permission_id: 'perm_menu_ops', permission_code: 'menu:ops', permission_type: 'menu', description: '运营中心' },
   { permission_id: 'perm_auth_login', permission_code: 'auth:login', permission_type: 'action', description: '登录' },
   { permission_id: 'perm_org_department_view', permission_code: 'org:department:view', permission_type: 'action', description: '查看组织' },
   { permission_id: 'perm_org_department_update', permission_code: 'org:department:update', permission_type: 'action', description: '管理部门' },
@@ -117,7 +118,7 @@ const ROLE_DEFS = [
     role_id: 'role_ops',
     role_code: 'ops',
     role_name: '运营',
-    perms: ['perm_menu_overview', 'perm_menu_product', 'perm_menu_fulfillment', ...PRODUCT_PERMS],
+    perms: ['perm_menu_overview', 'perm_menu_product', 'perm_menu_fulfillment', 'perm_menu_ops', ...PRODUCT_PERMS, 'perm_audit_view', 'perm_customer_view', 'perm_finance_view', 'perm_marketing_view'],
   },
   {
     role_id: 'role_warehouse',
@@ -129,7 +130,7 @@ const ROLE_DEFS = [
     role_id: 'role_finance',
     role_code: 'finance',
     role_name: '财务',
-    perms: ['perm_menu_overview', 'perm_finance_view', 'perm_order_view'],
+    perms: ['perm_menu_overview', 'perm_finance_view', 'perm_order_view', 'perm_menu_ops', 'perm_customer_view'],
   },
   {
     role_id: 'role_analyst',

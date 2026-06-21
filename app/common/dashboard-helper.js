@@ -1,5 +1,11 @@
+/**
+ * @module common/dashboard-helper
+ * @description 仪表盘权限辅助：查询用户权限码集合、判断字段是否可见。
+ * 关键规则：权限通过 user_roles → role_permissions 关联，且 role 须属当前 tenant_id。
+ */
 const { ensureDb, getTenantId } = require('./org-helper')
 
+/** 获取用户在指定租户下的全部 permission_code 集合 */
 async function getUserPermissionCodes(db, userId, tenantId) {
   const rows = await db('permissions as p')
     .join('role_permissions as rp', 'p.permission_id', 'rp.permission_id')
@@ -11,6 +17,7 @@ async function getUserPermissionCodes(db, userId, tenantId) {
   return new Set(rows.map((r) => r.permission_code))
 }
 
+/** 判断权限集合是否包含指定权限码 */
 function canView(permSet, code) {
   return permSet.has(code)
 }

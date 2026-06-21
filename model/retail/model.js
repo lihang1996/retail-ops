@@ -1,6 +1,7 @@
 const { deptSchema, userSchema, roleSchema, buildSchemaModule } = require('./schemas/org')
 const { buildProductMenu } = require('./schemas/product')
 const { buildWarehouseMenu } = require('./schemas/warehouse')
+const { buildOpsMenu } = require('./schemas/ops')
 
 module.exports = {
   mode: 'dashboard',
@@ -8,6 +9,7 @@ module.exports = {
   menu: [
     buildProductMenu(),
     buildWarehouseMenu(),
+    buildOpsMenu(),
     {
       key: 'org',
       name: '组织管理',

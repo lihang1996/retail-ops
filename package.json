@@ -12,7 +12,8 @@
     "migrate": "node scripts/migrate.js",
     "seed": "node scripts/seed.js",
     "seed:demo": "node scripts/seed-demo-data.js",
-    "reset:demo": "node scripts/reset-demo-data.js"
+    "reset:demo": "node scripts/reset-demo-data.js",
+    "e2e:smoke": "node scripts/e2e-smoke.js"
   },
   "author": "leon",
   "license": "ISC",

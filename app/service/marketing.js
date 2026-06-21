@@ -1,9 +1,15 @@
+/**
+ * @module service/marketing
+ * @description 营销活动查询服务：活动列表与详情（含关联商品）。
+ * 关键规则：活动与商品映射均按 tenant_id 隔离。
+ */
 const { ensureDb, getTenantId, getOperatorId, bizError, idGen } = require('../common/org-helper')
 
 module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
   return class MarketingService extends BaseService {
+    /** 列出当前租户营销活动 */
     async listActivities(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -13,6 +19,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 获取活动详情及关联商品列表 */
     async getActivity(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)

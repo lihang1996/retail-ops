@@ -1,3 +1,9 @@
+/**
+ * @module service/product
+ * @description 商品与 SKU 管理：商品 CRUD、SKU 维护、上架审批流。
+ * 状态流转：draft → pending_review → on_sale ↔ off_sale；已上架商品不可直接编辑 SKU。
+ * 关键规则：上架须类目/主图/有效 SKU/售价；on_sale 需先通过 approval 审批。
+ */
 const {
   ensureDb,
   getTenantId,
@@ -34,6 +40,7 @@ module.exports = (app) => {
         .where('p.tenant_id', tenantId)
     }
 
+    /** 列出商品及类目/品牌，附带 SKU 数量 */
     async list(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -68,6 +75,7 @@ module.exports = (app) => {
       }
     }
 
+    /** 获取商品详情及 SKU 列表 */
     async get(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -87,6 +95,7 @@ module.exports = (app) => {
       return { ...product, skus }
     }
 
+    /** 创建草稿商品，初始 status=draft */
     async create(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -127,6 +136,7 @@ module.exports = (app) => {
       return { productId }
     }
 
+    /** 更新商品资料，已上架商品不可编辑 */
     async update(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -169,6 +179,7 @@ module.exports = (app) => {
       return { productId }
     }
 
+    /** 软删除草稿商品（status=deleted） */
     async delete(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -197,6 +208,7 @@ module.exports = (app) => {
       return { productId }
     }
 
+    /** 列出商品下所有 SKU */
     async listSkus(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -213,6 +225,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 为商品新增 SKU，sku_code 租户内唯一 */
     async createSku(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -261,6 +274,7 @@ module.exports = (app) => {
       return { skuId }
     }
 
+    /** 更新 SKU 价格/规格/状态 */
     async updateSku(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -304,6 +318,7 @@ module.exports = (app) => {
       return { skuId }
     }
 
+    /** 软删除 SKU，已上架商品不可删 */
     async deleteSku(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -390,6 +405,7 @@ module.exports = (app) => {
       if (!hasPrice) bizError('上架前 SKU 需设置售价', 40900)
     }
 
+    /** 提交上架审核，draft/off_sale → pending_review */
     async submitReview(ctx, body = {}) {
       const { product_id: productId } = body
       if (!productId) bizError('product_id 不能为空')
@@ -399,6 +415,7 @@ module.exports = (app) => {
       })
     }
 
+    /** 审批通过后上架，pending_review → on_sale，须已有 approved 审批记录 */
     async onSale(ctx, body = {}) {
       const { product_id: productId } = body
       if (!productId) bizError('product_id 不能为空')
@@ -423,6 +440,7 @@ module.exports = (app) => {
       })
     }
 
+    /** 下架商品，on_sale → off_sale */
     async offSale(ctx, body = {}) {
       const { product_id: productId } = body
       if (!productId) bizError('product_id 不能为空')

@@ -1,3 +1,9 @@
+/**
+ * @module service/shipment
+ * @description 发货单服务：从订单生成发货单、拣货、出库发货。
+ * 状态流转：created → picking → picked → shipped；发货时扣库存并将订单置为 shipped。
+ * 关键规则：订单须已分仓（allocated）；一订单仅允许一个未完成发货单；未分仓时自动触发分仓。
+ */
 const {
   ensureDb,
   getTenantId,
@@ -25,6 +31,7 @@ module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
   return class ShipmentService extends BaseService {
+    /** 列出发货单及关联订单号、仓库 */
     async list(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -42,6 +49,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 获取发货单详情含明细、拣货任务、物流信息 */
     async get(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -63,6 +71,7 @@ module.exports = (app) => {
       return { ...shipment, items, pickingTasks: tasks, logistics }
     }
 
+    /** 从已分仓订单生成发货单，自动建议拣货库位 */
     async createFromOrder(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -140,6 +149,7 @@ module.exports = (app) => {
       return { shipmentId, shipmentNo }
     }
 
+    /** 开始拣货：状态 created → picking，创建 picking_task */
     async startPick(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -168,6 +178,7 @@ module.exports = (app) => {
       return { shipmentId, taskId }
     }
 
+    /** 确认拣货完成：记录 picked_location，状态 → picked */
     async confirmPick(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -198,6 +209,7 @@ module.exports = (app) => {
       return { shipmentId }
     }
 
+    /** 出库发货：扣库存、写物流、订单 → shipped */
     async ship(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -258,6 +270,7 @@ module.exports = (app) => {
       return { shipmentId, orderId: shipment.order_id }
     }
 
+    /** 生成拣货路径点，按库位坐标 x/z 排序 */
     async getPickingRoute(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)

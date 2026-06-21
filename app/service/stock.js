@@ -1,3 +1,9 @@
+/**
+ * @module service/stock
+ * @description 库存服务：入库、锁定/解锁、出库及库存查询。
+ * 关键规则：可用/锁定/总量分字段管理；乐观锁 version 防并发；出库可关联 lock_id 消耗锁定量；
+ * 所有操作写 stock_logs 留痕，租户按 tenant_id 隔离。
+ */
 const {
   ensureDb,
   getTenantId,
@@ -19,6 +25,7 @@ module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
   return class StockService extends BaseService {
+    /** 按仓库/SKU 查询库存汇总，支持低库存风险筛选 */
     async list(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -45,6 +52,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 查询库位级库存分布 */
     async listLocations(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -68,6 +76,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 查询库存变动流水 */
     async listLogs(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -85,6 +94,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 入库：增加 total/available，可选更新库位 qty */
     async inbound(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -148,6 +158,7 @@ module.exports = (app) => {
       return { skuId, warehouseId, qty: inboundQty }
     }
 
+    /** 锁定库存：available → locked，关联订单等 ref_type/ref_id */
     async lock(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -207,6 +218,7 @@ module.exports = (app) => {
       return { skuId, warehouseId, qty: lockQty, lockId }
     }
 
+    /** 释放锁定：locked → available，标记 lock 为 released */
     async unlock(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -254,6 +266,7 @@ module.exports = (app) => {
       return { lockId }
     }
 
+    /** 出库：扣减 total，优先消耗锁定量，否则扣 available */
     async outbound(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)

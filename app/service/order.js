@@ -1,3 +1,9 @@
+/**
+ * @module service/order
+ * @description 订单服务：Excel 导入、模拟支付、分仓。
+ * 状态流转：pending_payment → paid（支付+锁库存）→ allocated（分仓）→ shipped（由发货单驱动）。
+ * 关键规则：支付时自动选仓并锁定库存，失败则回滚锁；导入按订单号/行分组，租户内订单号唯一。
+ */
 const XLSX = require('xlsx')
 const {
   ensureDb,
@@ -55,6 +61,7 @@ module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
   return class OrderService extends BaseService {
+    /** 列出订单及关联店铺，支持状态/店铺/时间筛选 */
     async list(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -74,6 +81,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 获取订单详情含明细、状态日志、发货单 */
     async get(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -91,6 +99,7 @@ module.exports = (app) => {
       return { ...order, items, statusLogs: logs, shipments }
     }
 
+    /** 从 Excel 批量导入订单，按订单号分组，逐组事务写入 */
     async importFile(ctx, file) {
       if (!file?.buffer?.length) bizError('请上传 xlsx/xls/csv 文件', 42200)
 
@@ -251,6 +260,7 @@ module.exports = (app) => {
       }
     }
 
+    /** 查询导入批次结果及错误明细 */
     async importResult(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -270,6 +280,7 @@ module.exports = (app) => {
       return { ...batch, errors }
     }
 
+    /** 模拟支付：选仓、锁库存、写入 payment，状态 pending_payment → paid */
     async mockPay(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -349,6 +360,7 @@ module.exports = (app) => {
       return { orderId, warehouseId: warehouse.warehouse_id, reason }
     }
 
+    /** 手动分仓：paid/allocated → allocated，绑定 warehouse_id */
     async allocate(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)

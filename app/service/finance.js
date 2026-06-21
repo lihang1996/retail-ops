@@ -1,3 +1,8 @@
+/**
+ * @module service/finance
+ * @description 财务汇总服务：订单营收与店铺结算统计。
+ * 关键规则：仅统计 paid/allocated/shipped 状态订单；退款暂为占位 0。
+ */
 const { ensureDb, getTenantId } = require('../common/org-helper')
 
 const PAID_STATUSES = ['paid', 'allocated', 'shipped']
@@ -6,6 +11,7 @@ module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
   return class FinanceService extends BaseService {
+    /** 汇总租户订单营收及按店铺分组结算 */
     async summary(ctx) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)

@@ -1,7 +1,13 @@
+/**
+ * @module service/audit
+ * @description 审计日志服务：记录与查询租户内操作留痕。
+ * 关键规则：写入失败不阻断主流程（warn 日志）；查询按 tenant_id 隔离。
+ */
 module.exports = (app) => {
   const { ensureDb, getTenantId } = require('../common/org-helper')
 
   return class AuditService {
+    /** 写入审计日志，含操作人、对象、请求上下文 */
     async record({ tenantId, operatorId, actionCode, objectType, objectId, detail, ctx }) {
       if (!app.db) return
       const idGen = require('../common/id')
@@ -23,6 +29,7 @@ module.exports = (app) => {
       }
     }
 
+    /** 分页查询审计日志，支持操作人/动作/对象筛选 */
     async list(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)

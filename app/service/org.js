@@ -1,3 +1,9 @@
+/**
+ * @module service/org
+ * @description 组织架构服务：部门、用户、角色的租户内 CRUD。
+ * 关键规则：所有查询/写入按 tenant_id 隔离；用户通过 tenant_members 关联租户；
+ * 角色绑定仅允许本租户 role_id；锁定用户不可锁定自身。
+ */
 const bcrypt = require('bcryptjs')
 const {
   ensureDb,
@@ -16,6 +22,7 @@ module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
   return class OrgService extends BaseService {
+    /** 列出当前租户部门，支持按状态、名称筛选 */
     async listDepartments(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -26,6 +33,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 获取单个部门详情，校验 tenant_id 归属 */
     async getDepartment(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -36,6 +44,7 @@ module.exports = (app) => {
       return row
     }
 
+    /** 创建部门，可选上级部门须同属本租户 */
     async createDepartment(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -66,6 +75,7 @@ module.exports = (app) => {
       return { deptId }
     }
 
+    /** 更新部门名称、上级或状态，禁止上级设为自己 */
     async updateDepartment(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -93,14 +103,17 @@ module.exports = (app) => {
       return { deptId }
     }
 
+    /** 禁用部门（软删除，status=disabled） */
     async disableDepartment(ctx, body = {}) {
       return this.updateDepartment(ctx, { ...body, status: 'disabled' })
     }
 
+    /** 删除部门（等同禁用） */
     async deleteDepartment(ctx, body = {}) {
       return this.disableDepartment(ctx, body)
     }
 
+    /** 列出租户成员及部门、角色信息 */
     async listUsers(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -147,6 +160,7 @@ module.exports = (app) => {
       }
     }
 
+    /** 获取单个租户用户详情 */
     async getUser(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -171,6 +185,7 @@ module.exports = (app) => {
       return row
     }
 
+    /** 创建用户并加入当前租户，同步角色绑定（事务） */
     async createUser(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -219,6 +234,7 @@ module.exports = (app) => {
       return { userId }
     }
 
+    /** 更新用户资料、部门、角色或账号状态 */
     async updateUser(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -265,6 +281,7 @@ module.exports = (app) => {
       return { userId }
     }
 
+    /** 重置密码并清除锁定/失败计数，恢复 active 状态 */
     async resetUserPassword(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -292,10 +309,12 @@ module.exports = (app) => {
       return { userId }
     }
 
+    /** 锁定用户账号 30 分钟，不可锁定当前登录者 */
     async lockUser(ctx, body = {}) {
       return this._setUserLockState(ctx, body, true)
     }
 
+    /** 解锁用户账号，清除 locked_until */
     async unlockUser(ctx, body = {}) {
       return this._setUserLockState(ctx, body, false)
     }
@@ -326,6 +345,7 @@ module.exports = (app) => {
       return { userId }
     }
 
+    /** 列出当前租户角色 */
     async listRoles(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -336,6 +356,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 获取单个角色详情 */
     async getRole(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -346,6 +367,7 @@ module.exports = (app) => {
       return row
     }
 
+    /** 创建角色，role_code 租户内唯一 */
     async createRole(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -374,6 +396,7 @@ module.exports = (app) => {
       return { roleId }
     }
 
+    /** 更新角色名称或状态 */
     async updateRole(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)

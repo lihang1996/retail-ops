@@ -1,3 +1,9 @@
+/**
+ * @module middleware/tenant-context
+ * @description 租户上下文中间件：加载租户信息并限制异常租户写操作。
+ * 关键规则：disabled 租户拒绝所有请求；frozen/overdue 租户禁止 POST/PUT/DELETE/PATCH（logout 除外），
+ * 防止欠费或冻结租户继续变更业务数据。
+ */
 module.exports = (app) => {
   return async (ctx, next) => {
     const user = ctx.state.user

@@ -1,3 +1,8 @@
+/**
+ * @module service/ai
+ * @description AI 问数服务：基于关键词的只读查询（库存风险、订单趋势等）。
+ * 关键规则：仅执行预定义只读 SQL，结果按 tenant_id 隔离；会话与查询历史持久化。
+ */
 const { ensureDb, getTenantId, getOperatorId, bizError, idGen } = require('../common/org-helper')
 
 const KEYWORDS = {
@@ -62,6 +67,7 @@ module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
   return class AiService extends BaseService {
+    /** 解析自然语言问题，执行只读查询并保存会话/报告 */
     async query(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -111,6 +117,7 @@ module.exports = (app) => {
       }
     }
 
+    /** 查询当前用户的历史问数记录 */
     async history(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)

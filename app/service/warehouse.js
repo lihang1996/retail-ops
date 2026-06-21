@@ -1,3 +1,8 @@
+/**
+ * @module service/warehouse
+ * @description 仓库与库位管理：仓库 CRUD、库位维护、3D 布局与风险地图。
+ * 关键规则：仓库编码租户内唯一；库位含 3D 坐标与容量；风险等级由库存量/容量比计算。
+ */
 const {
   ensureDb,
   getTenantId,
@@ -12,6 +17,7 @@ module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
   return class WarehouseService extends BaseService {
+    /** 列出当前租户仓库 */
     async list(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -22,6 +28,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 获取单个仓库详情 */
     async get(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -30,6 +37,7 @@ module.exports = (app) => {
       return assertRowInTenant(db, 'warehouses', tenantId, 'warehouse_id', warehouseId, '仓库')
     }
 
+    /** 创建仓库，编码租户内唯一 */
     async create(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -58,6 +66,7 @@ module.exports = (app) => {
       return { warehouseId }
     }
 
+    /** 更新仓库名称、地址或状态 */
     async update(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -81,6 +90,7 @@ module.exports = (app) => {
       return { warehouseId }
     }
 
+    /** 列出库位及所属仓库 */
     async listLocations(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -96,6 +106,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 获取库位详情含 SKU 分布、风险等级、近期流水 */
     async getLocation(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -137,6 +148,7 @@ module.exports = (app) => {
       }
     }
 
+    /** 创建库位，含 3D 坐标与容量，编码仓库内唯一 */
     async createLocation(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -183,6 +195,7 @@ module.exports = (app) => {
       return { locationId }
     }
 
+    /** 更新库位容量、坐标或状态 */
     async updateLocation(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -215,6 +228,7 @@ module.exports = (app) => {
       return { locationId }
     }
 
+    /** 获取仓库 3D 布局：库区、货架、库位坐标 */
     async getLayout(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -244,6 +258,7 @@ module.exports = (app) => {
       return { warehouse, zones, shelves, locations }
     }
 
+    /** 获取仓库库位风险地图（empty/low/normal/full） */
     async getRiskMap(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)

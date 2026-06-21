@@ -1,3 +1,8 @@
+/**
+ * @module service/dashboard
+ * @description 经营总览服务：GMV、订单数、库存风险、待发货等指标。
+ * 关键规则：各指标按用户权限码决定是否返回真实值（字段级可见性），无权限返回 null。
+ */
 const { ensureDb, getTenantId } = require('../common/org-helper')
 const { getUserPermissionCodes, canView } = require('../common/dashboard-helper')
 
@@ -7,6 +12,7 @@ module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
   return class DashboardService extends BaseService {
+    /** 聚合经营指标与近 7 日趋势，按权限过滤敏感数据 */
     async overview(ctx) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)

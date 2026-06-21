@@ -1,3 +1,9 @@
+/**
+ * @module middleware/auth
+ * @description JWT 认证中间件：校验 Bearer token 与会话有效性。
+ * 关键规则：白名单路径（login/health/static 等）跳过；API 无 token 返回 40100；
+ * 须 login_sessions.status=active 才视为有效登录，防止 revoked token 继续使用。
+ */
 const jwt = require('jsonwebtoken')
 
 const WHITE_LIST_PREFIX = [

@@ -1,3 +1,9 @@
+/**
+ * @module middleware/permission
+ * @description 接口权限中间件：按 permission-map 校验用户是否拥有所需 permission_code。
+ * 关键规则：map 值为 null 仅须登录；undefined 未映射则开发期放行；
+ * 权限通过 user_roles → role_permissions 关联，且 role.tenant_id 须匹配当前用户租户。
+ */
 const permissionMap = require('../common/permission-map')
 
 module.exports = (app) => {

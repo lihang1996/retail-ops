@@ -1,3 +1,9 @@
+/**
+ * @module common/permission-map
+ * @description API 路由与权限点映射表，供 permission 中间件校验。
+ * 关键规则：null 表示登录即可；undefined 表示开发期未配置则放行；
+ * 字符串值为 required permission_code，须在用户角色权限中存在。
+ */
 // API 路径 -> 权限点映射（null = 登录即可；undefined = 开发期放行）
 module.exports = {
   'GET /api/auth/me': null,

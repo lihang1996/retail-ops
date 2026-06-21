@@ -1,3 +1,9 @@
+/**
+ * @module service/auth
+ * @description 认证服务：登录/登出、会话与 JWT 签发、权限快照。
+ * 关键规则：连续登录失败 5 次锁定 30 分钟；用户须为活跃租户成员且租户未停用；
+ * 登录成功写入 login_sessions 供 auth 中间件校验会话有效性。
+ */
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const idGen = require('../common/id')
@@ -8,6 +14,7 @@ module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
   return class AuthService extends BaseService {
+    /** 账号密码登录，校验锁定状态、租户成员资格，签发 JWT 并记录登录日志 */
     async login({ account, password, ip, userAgent }) {
       const db = app.db
       if (!db) throw new Error('数据库未配置')
@@ -102,11 +109,13 @@ module.exports = (app) => {
       }
     }
 
+    /** 登出：将会话标记为 revoked，使对应 token 失效 */
     async logout({ sessionId, userId }) {
       if (!app.db || !sessionId) return
       await app.db('login_sessions').where({ session_id: sessionId, user_id: userId }).update({ status: 'revoked' })
     }
 
+    /** 获取当前用户与所属租户基本信息 */
     async getCurrentUser({ userId, tenantId }) {
       const user = await app.db('users').where({ user_id: userId }).first()
       const tenant = await app.db('tenants').where({ tenant_id: tenantId }).first()
@@ -124,6 +133,7 @@ module.exports = (app) => {
       }
     }
 
+    /** 聚合用户在当前租户下的菜单与操作权限码，供前端渲染导航与按钮 */
     async getPermissionSnapshot({ userId, tenantId }) {
       const rows = await app.db('permissions as p')
         .join('role_permissions as rp', 'p.permission_id', 'rp.permission_id')

@@ -1,3 +1,8 @@
+/**
+ * @module service/store
+ * @description 店铺管理服务：租户内线上/线下店铺 CRUD。
+ * 关键规则：店铺名称租户内唯一；删除为软禁用（status=disabled）。
+ */
 const {
   ensureDb,
   getTenantId,
@@ -12,6 +17,7 @@ module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
   return class StoreService extends BaseService {
+    /** 列出当前租户店铺，支持状态与名称筛选 */
     async list(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -22,6 +28,7 @@ module.exports = (app) => {
       return { list, total: list.length }
     }
 
+    /** 获取单个店铺，校验 tenant_id 归属 */
     async get(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -30,6 +37,7 @@ module.exports = (app) => {
       return assertRowInTenant(db, 'stores', tenantId, 'store_id', storeId, '店铺')
     }
 
+    /** 创建店铺，名称租户内不可重复 */
     async create(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -61,6 +69,7 @@ module.exports = (app) => {
       return { storeId }
     }
 
+    /** 更新店铺名称、类型或状态 */
     async update(ctx, body = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -85,10 +94,12 @@ module.exports = (app) => {
       return { storeId }
     }
 
+    /** 禁用店铺 */
     async disable(ctx, body = {}) {
       return this.update(ctx, { ...body, status: 'disabled' })
     }
 
+    /** 删除店铺（等同禁用） */
     async delete(ctx, body = {}) {
       return this.disable(ctx, body)
     }
