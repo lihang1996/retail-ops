@@ -10,7 +10,9 @@
     "start:prod": "NODE_ENV=production node ./serve.js",
     "lint": "echo \"lint: skip until eslint configured\"",
     "migrate": "node scripts/migrate.js",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "seed:demo": "node scripts/seed-demo-data.js",
+    "reset:demo": "node scripts/reset-demo-data.js"
   },
   "author": "leon",
   "license": "ISC",

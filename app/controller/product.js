@@ -50,7 +50,11 @@ module.exports = (app) => {
     })
 
     submitReview = wrap(async function submitReview(ctx) {
-      const data = await app.service.product.submitReview(ctx, ctx.request.body)
+      const { product_id: productId } = ctx.request.body
+      const data = await app.service.approval.submit(ctx, {
+        ref_type: 'product_on_sale',
+        ref_id: productId,
+      })
       this.success(ctx, data)
     })
 

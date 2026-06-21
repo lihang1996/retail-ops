@@ -45,6 +45,15 @@ const PERMISSIONS = [
   { permission_id: 'perm_shipment_create', permission_code: 'shipment:create', permission_type: 'action', description: '创建发货单' },
   { permission_id: 'perm_shipment_pick', permission_code: 'shipment:pick', permission_type: 'action', description: '拣货' },
   { permission_id: 'perm_shipment_ship', permission_code: 'shipment:ship', permission_type: 'action', description: '出库发货' },
+  { permission_id: 'perm_approval_submit', permission_code: 'approval:submit', permission_type: 'action', description: '提交审批' },
+  { permission_id: 'perm_approval_view', permission_code: 'approval:view', permission_type: 'action', description: '查看审批' },
+  { permission_id: 'perm_approval_approve', permission_code: 'approval:approve', permission_type: 'action', description: '审批通过/驳回' },
+  { permission_id: 'perm_audit_view', permission_code: 'audit:view', permission_type: 'action', description: '查看审计日志' },
+  { permission_id: 'perm_customer_view', permission_code: 'customer:view', permission_type: 'action', description: '查看客户' },
+  { permission_id: 'perm_customer_phone', permission_code: 'customer:phone:view', permission_type: 'action', description: '查看客户手机号' },
+  { permission_id: 'perm_finance_view', permission_code: 'finance:view', permission_type: 'action', description: '查看财务报表' },
+  { permission_id: 'perm_marketing_view', permission_code: 'marketing:view', permission_type: 'action', description: '查看营销活动' },
+  { permission_id: 'perm_ai_query', permission_code: 'ai:query', permission_type: 'action', description: 'AI 查询' },
 ]
 
 const ORG_PERMS = [
@@ -70,6 +79,9 @@ const PRODUCT_PERMS = [
   'perm_product_submit',
   'perm_product_on_sale',
   'perm_product_off_sale',
+  'perm_approval_submit',
+  'perm_approval_view',
+  'perm_approval_approve',
   'perm_order_view',
   'perm_order_import',
   'perm_order_pay',
@@ -117,13 +129,13 @@ const ROLE_DEFS = [
     role_id: 'role_finance',
     role_code: 'finance',
     role_name: '财务',
-    perms: ['perm_menu_overview'],
+    perms: ['perm_menu_overview', 'perm_finance_view', 'perm_order_view'],
   },
   {
     role_id: 'role_analyst',
     role_code: 'analyst',
     role_name: '数据分析',
-    perms: ['perm_menu_overview', 'perm_menu_ai'],
+    perms: ['perm_menu_overview', 'perm_menu_ai', 'perm_ai_query', 'perm_product_view', 'perm_stock_view', 'perm_order_view'],
   },
 ]
 

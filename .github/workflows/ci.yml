@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout elpis sibling
+        uses: actions/checkout@v4
+        with:
+          repository: lihang1996/elpis
+          path: elpis
+        continue-on-error: true
+
+      - name: Use local elpis fallback
+        run: |
+          if [ ! -d elpis/package.json ] && [ -d ../elpis ]; then
+            cp -r ../elpis ./elpis
+          fi
+          ls -la elpis || echo "elpis missing - CI may fail without monorepo"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install elpis
+        working-directory: elpis
+        run: npm install
+
+      - name: Install retail-ops
+        run: npm install
+
+      - name: Production build
+        run: npm run build:prod

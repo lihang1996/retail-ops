@@ -29,6 +29,20 @@ npm run dev
 | ops@retail.demo | demo123 | 运营 |
 | warehouse@retail.demo | demo123 | 仓库 |
 
+## 黄金链路 E2E 验收
+
+1. 登录 `admin@retail.demo` → 经营总览有指标
+2. 商品管理 → 提交上架审批 → 审批通过 → 商品在售
+3. 仓储管理 → 商品入库（SKU-DEMO-001）
+4. 履约中心 → Excel 导入订单 → 模拟支付 → 分仓 → 生成发货单 → 拣货 → 出库
+5. 3D 仓库 → 查看库位风险与拣货路径
+6. AI 工作台 → 查询「库存不足的 SKU」
+
+```bash
+node scripts/seed-demo-data.js    # 初始化 migrate + seed
+node scripts/reset-demo-data.js   # 重置演示业务数据
+```
+
 ## 构建
 
 ```bash

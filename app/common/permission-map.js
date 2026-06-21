@@ -97,4 +97,22 @@ module.exports = {
   'POST /api/proj/shipment/confirm_pick': 'shipment:pick',
   'POST /api/proj/shipment/ship': 'shipment:ship',
   'GET /api/proj/shipment/picking_route': 'shipment:view',
+
+  'POST /api/proj/approval/submit': 'approval:submit',
+  'GET /api/proj/approval/todo_list': 'approval:view',
+  'POST /api/proj/approval/approve': 'approval:approve',
+  'POST /api/proj/approval/reject': 'approval:approve',
+
+  'GET /api/proj/audit/list': 'audit:view',
+
+  'GET /api/proj/customer/list': 'customer:view',
+  'GET /api/proj/customer': 'customer:view',
+
+  'GET /api/proj/finance/summary': 'finance:view',
+
+  'GET /api/proj/marketing/activity/list': 'marketing:view',
+  'GET /api/proj/marketing/activity': 'marketing:view',
+
+  'POST /api/proj/ai/query': 'ai:query',
+  'GET /api/proj/ai/history': 'ai:query',
 }

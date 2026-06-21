@@ -402,10 +402,24 @@ module.exports = (app) => {
     async onSale(ctx, body = {}) {
       const { product_id: productId } = body
       if (!productId) bizError('product_id 不能为空')
+
+      const db = ensureDb(app)
+      const tenantId = getTenantId(ctx)
+      const approved = await db('approvals')
+        .where({
+          tenant_id: tenantId,
+          ref_type: 'product_on_sale',
+          ref_id: productId,
+          status: 'approved',
+        })
+        .orderBy('updated_at', 'desc')
+        .first()
+      if (!approved) bizError('商品需先通过上架审批', 40900)
+
       return this._transitionStatus(ctx, productId, 'on_sale', {
-        allowedFrom: ['draft', 'pending_review', 'off_sale'],
+        allowedFrom: ['pending_review'],
         auditCode: 'product:on_sale',
-        remark: '上架',
+        remark: '审批通过上架',
       })
     }
 
