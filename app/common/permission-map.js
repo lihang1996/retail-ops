@@ -4,6 +4,8 @@ module.exports = {
   'GET /api/auth/permissions': null,
   'POST /api/auth/logout': null,
 
+  'GET /api/proj/dashboard/overview': null,
+
   'GET /api/proj/org/department/list': 'org:department:view',
   'GET /api/proj/org/department': 'org:department:view',
   'POST /api/proj/org/department': 'org:department:update',
