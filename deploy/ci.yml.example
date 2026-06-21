@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install elpis (monorepo)
+        run: |
+          if [ -d ../elpis ]; then cd ../elpis && npm install; fi
+
+      - name: Install retail-ops
+        run: npm install
+
+      - name: Production build
+        run: npm run build:prod
