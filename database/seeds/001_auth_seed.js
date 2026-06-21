@@ -37,6 +37,14 @@ const PERMISSIONS = [
   { permission_id: 'perm_stock_inbound', permission_code: 'stock:inbound', permission_type: 'action', description: '入库' },
   { permission_id: 'perm_stock_lock', permission_code: 'stock:lock', permission_type: 'action', description: '锁定库存' },
   { permission_id: 'perm_stock_outbound', permission_code: 'stock:outbound', permission_type: 'action', description: '出库' },
+  { permission_id: 'perm_order_view', permission_code: 'order:view', permission_type: 'action', description: '查看订单' },
+  { permission_id: 'perm_order_import', permission_code: 'order:import', permission_type: 'action', description: '导入订单' },
+  { permission_id: 'perm_order_pay', permission_code: 'order:pay', permission_type: 'action', description: '订单支付' },
+  { permission_id: 'perm_order_allocate', permission_code: 'order:allocate', permission_type: 'action', description: '订单分仓' },
+  { permission_id: 'perm_shipment_view', permission_code: 'shipment:view', permission_type: 'action', description: '查看发货单' },
+  { permission_id: 'perm_shipment_create', permission_code: 'shipment:create', permission_type: 'action', description: '创建发货单' },
+  { permission_id: 'perm_shipment_pick', permission_code: 'shipment:pick', permission_type: 'action', description: '拣货' },
+  { permission_id: 'perm_shipment_ship', permission_code: 'shipment:ship', permission_type: 'action', description: '出库发货' },
 ]
 
 const ORG_PERMS = [
@@ -62,6 +70,10 @@ const PRODUCT_PERMS = [
   'perm_product_submit',
   'perm_product_on_sale',
   'perm_product_off_sale',
+  'perm_order_view',
+  'perm_order_import',
+  'perm_order_pay',
+  'perm_order_allocate',
 ]
 
 const WAREHOUSE_PERMS = [
@@ -74,6 +86,12 @@ const WAREHOUSE_PERMS = [
   'perm_stock_lock',
   'perm_stock_outbound',
   'perm_product_view',
+  'perm_order_view',
+  'perm_order_allocate',
+  'perm_shipment_view',
+  'perm_shipment_create',
+  'perm_shipment_pick',
+  'perm_shipment_ship',
 ]
 
 const ROLE_DEFS = [

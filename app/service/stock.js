@@ -165,6 +165,7 @@ module.exports = (app) => {
         bizError('参数不完整或 qty 无效')
       }
 
+      let lockId
       await db.transaction(async (trx) => {
         const stock = await trx('stocks')
           .where({ tenant_id: tenantId, sku_id: skuId, warehouse_id: warehouseId })
@@ -177,8 +178,9 @@ module.exports = (app) => {
           locked_qty: stock.locked_qty + lockQty,
         })
 
+        lockId = idGen.next('lock')
         await trx('stock_locks').insert({
-          lock_id: idGen.next('lock'),
+          lock_id: lockId,
           tenant_id: tenantId,
           sku_id: skuId,
           warehouse_id: warehouseId,
@@ -202,7 +204,7 @@ module.exports = (app) => {
         })
       })
 
-      return { skuId, warehouseId, qty: lockQty }
+      return { skuId, warehouseId, qty: lockQty, lockId }
     }
 
     async unlock(ctx, body = {}) {

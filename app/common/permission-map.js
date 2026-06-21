@@ -79,4 +79,18 @@ module.exports = {
   'POST /api/proj/stock/lock': 'stock:lock',
   'POST /api/proj/stock/unlock': 'stock:lock',
   'POST /api/proj/stock/outbound': 'stock:outbound',
+
+  'GET /api/proj/order/list': 'order:view',
+  'GET /api/proj/order': 'order:view',
+  'POST /api/proj/order/import': 'order:import',
+  'GET /api/proj/order/import_result': 'order:view',
+  'POST /api/proj/order/mock_pay': 'order:pay',
+  'POST /api/proj/order/allocate': 'order:allocate',
+
+  'GET /api/proj/shipment/list': 'shipment:view',
+  'GET /api/proj/shipment': 'shipment:view',
+  'POST /api/proj/shipment/create_from_order': 'shipment:create',
+  'POST /api/proj/shipment/start_pick': 'shipment:pick',
+  'POST /api/proj/shipment/confirm_pick': 'shipment:pick',
+  'POST /api/proj/shipment/ship': 'shipment:ship',
 }
