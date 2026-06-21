@@ -28,6 +28,8 @@ function fail(label, detail) {
 async function request(method, path, { token, body, form } = {}) {
   const headers = {}
   if (token) headers.Authorization = `Bearer ${token}`
+  // elpis project-handler 要求 proj_key 放在请求头，而非 query
+  if (path.includes('/api/proj/')) headers.proj_key = PROJ
   let payload
   if (form) {
     payload = form

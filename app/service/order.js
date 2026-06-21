@@ -178,8 +178,10 @@ module.exports = (app) => {
             let totalAmount = 0
 
             for (const line of group.lines) {
-              const sku = await activeOnly(trx('product_skus as sku'))
+              const sku = await trx('product_skus as sku')
                 .leftJoin('products as p', 'sku.product_id', 'p.product_id')
+                .whereNull('sku.deleted_at')
+                .whereNull('p.deleted_at')
                 .where({ 'sku.tenant_id': tenantId, 'sku.sku_code': line.skuCode, 'sku.status': 'active' })
                 .select('sku.*', 'p.product_name')
                 .first()
