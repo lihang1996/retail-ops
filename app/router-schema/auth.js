@@ -11,4 +11,13 @@ module.exports = {
       },
     },
   },
+  '/api/auth/logout': {
+    post: {},
+  },
+  '/api/auth/me': {
+    get: {},
+  },
+  '/api/auth/permissions': {
+    get: {},
+  },
 }

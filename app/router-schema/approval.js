@@ -16,7 +16,14 @@ module.exports = {
     get: {
       query: {
         type: 'object',
-        properties: { status: { type: 'string' } },
+        properties: {
+          status: { type: 'string' },
+          keyword: { type: 'string' },
+          product_status: { type: 'string' },
+          applicant_name: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
+        },
       },
     },
   },

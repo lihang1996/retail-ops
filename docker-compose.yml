@@ -28,7 +28,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      PORT: 8080
+      PORT: 8090
       DB_HOST: mysql
       DB_PORT: 3306
       DB_USER: ${DB_USER:-retail}
@@ -36,9 +36,9 @@ services:
       DB_NAME: ${DB_NAME:-retail_ops}
       JWT_SECRET: ${JWT_SECRET:-retail-ops-change-me-in-prod}
     ports:
-      - "${APP_PORT:-8080}:8080"
+      - "${APP_PORT:-8090}:8090"
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8080/health',(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8090/health',(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5

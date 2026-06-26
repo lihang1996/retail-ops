@@ -6,6 +6,8 @@ module.exports = {
         properties: {
           dept_name: { type: 'string' },
           status: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
         },
       },
     },
@@ -69,7 +71,12 @@ module.exports = {
         type: 'object',
         properties: {
           account: { type: 'string' },
+          display_name: { type: 'string' },
+          dept_id: { type: 'string' },
+          dept_name: { type: 'string' },
           status: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
         },
       },
     },
@@ -151,7 +158,10 @@ module.exports = {
         type: 'object',
         properties: {
           role_name: { type: 'string' },
+          role_code: { type: 'string' },
           status: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
         },
       },
     },

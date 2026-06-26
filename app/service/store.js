@@ -12,6 +12,14 @@ const {
   idGen,
   assertRowInTenant,
 } = require('../common/org-helper')
+const { paginateQuery } = require('../common/pagination')
+const { applyFilters } = require('../common/apply-filters')
+
+const STORE_LIST_FILTERS = [
+  { key: 'status', column: 'status' },
+  { key: 'store_name', column: 'store_name', op: 'like', transform: (value) => value.trim() },
+  { key: 'store_type', column: 'store_type' },
+]
 
 module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
@@ -22,10 +30,8 @@ module.exports = (app) => {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
       let qb = db('stores').where({ tenant_id: tenantId })
-      if (query.status) qb = qb.andWhere({ status: query.status })
-      if (query.store_name) qb = qb.andWhere('store_name', 'like', `%${query.store_name}%`)
-      const list = await qb.orderBy('created_at', 'desc')
-      return { list, total: list.length }
+      qb = applyFilters(qb, query, STORE_LIST_FILTERS)
+      return paginateQuery(qb.orderBy('created_at', 'desc'), query, { countColumn: 'store_id' })
     }
 
     /** 获取单个店铺，校验 tenant_id 归属 */

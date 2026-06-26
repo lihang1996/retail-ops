@@ -13,7 +13,10 @@ module.exports = {
         type: 'object',
         properties: {
           store_name: { type: 'string' },
+          store_type: { type: 'string' },
           status: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
         },
       },
     },

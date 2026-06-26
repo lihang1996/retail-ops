@@ -4,7 +4,7 @@
 
 > 在线 Demo：部署后在此填写公网地址（见下方 Docker / VPS 说明）。
 
-> 演示截图/GIF 见 [docs/screenshots/](docs/screenshots/README.md)（首屏推荐 `warehouse-3d.png`）。
+> 演示截图/GIF 见 [docs/screenshots/README.md](docs/screenshots/README.md)（素材待录制；首屏推荐 `warehouse-3d.png`）。
 
 ## 演示账号
 
@@ -25,11 +25,11 @@
 | M1 身份与权限 | JWT 登录、多租户隔离、RBAC 菜单/操作权限、审计日志写入 |
 | M2 商品中心 | 品牌/类目/商品/SKU Schema CRUD、上架审批流 |
 | M3 仓储库存 | 仓库/库位、入库、`stockService` 统一写入口、锁定/扣减 |
-| M4 订单履约 | Excel 导入、模拟支付、智能分仓、发货单、拣货、出库 |
+| M4 订单履约 | Excel 导入、支付确认、智能分仓、发货单、拣货、出库 |
 | M5 3D 仓库 | Three.js 库位风险热力、拣货路径可视化 |
 | M6 扩展模块 | 经营总览、上架审批、审计查询 API、客户/财务/营销薄模块 |
-| M7 AI 工作台 | 只读关键词查询（库存风险、订单趋势演示） |
-| M8 工程化 | Docker Compose、init/seed/reset 脚本、CI 模板、E2E 冒烟脚本 |
+| M7 AI 业务助手 | 业务流程 playbook 分步指引 + 只读问数 |
+| M8 工程化 | Docker、CI、脚本、单测、路由校验 |
 
 ## 架构概览
 
@@ -49,7 +49,7 @@
 - **retail-ops**：登录/RBAC/租户、零售业务状态机、库存写入口、3D 场景、看板与 AI 演示。
 - **库存红线**：所有库存变更必须经过 `app/service/stock.js`（`stockService`），Controller 不得直写库存表。
 
-详细设计见上级目录 `dom/elpis-retail-ops-architecture.md`。
+详细设计见 [docs/README.md](docs/README.md) 与各模块文档（M1→M8）。
 
 ## 本地开发
 
@@ -62,7 +62,7 @@ cd ../elpis && npm install
 # 2. 安装业务项目依赖
 cd ../retail-ops && npm install
 
-# 3. MySQL：本地 3306 或 docker compose 仅启 mysql（默认映射 3307，见 config.local.js）
+# 3. MySQL：本地直连 3306（见 config/config.local.js），或 docker compose 映射宿主机 3307（见 .env.example DB_PUBLISH_PORT）
 npm run migrate && npm run seed
 
 # 4. 构建并启动
@@ -70,15 +70,19 @@ npm run build:prod
 npm run dev
 ```
 
-访问：http://localhost:8080/view/login
+访问：http://localhost:8090/view/login
 
 ### 演示数据脚本
 
 ```bash
 npm run seed:demo    # migrate + 全量 seed（幂等）
 npm run reset:demo   # 清理租户业务数据后重跑 seed，保留账号权限
-node scripts/e2e-smoke.js   # API 层黄金链路冒烟（需服务已启动）
+npm run demo:preflight # 本地展示前静态预检（不改数据）
+npm run demo:verify  # 服务启动后跑 API 验收（会创建验收数据）
+npm run e2e:smoke   # API 层黄金链路冒烟（需服务已启动）
 ```
+
+完整本地演示流程见 [docs/DEMO_WORKFLOW.md](docs/DEMO_WORKFLOW.md)。
 
 ## 黄金链路 E2E 验收（M8-06）
 
@@ -87,9 +91,9 @@ node scripts/e2e-smoke.js   # API 层黄金链路冒烟（需服务已启动）
 1. 登录 `admin@retail.demo` → 经营总览有 GMV/订单/库存指标
 2. 商品管理 → 创建商品与 SKU → 提交上架审批 → 审批通过 → 上架
 3. 仓储管理 → 商品入库（如 `SKU-DEMO-001`）
-4. 履约中心 → Excel 导入订单 → 模拟支付 → 分仓 → 生成发货单 → 拣货 → 出库
+4. 履约中心 → Excel 导入订单 → **支付**（`POST /api/proj/order/pay`）→ 分仓 → 生成发货单 → 拣货 → 出库
 5. 3D 仓库 → 查看库位风险与拣货路径
-6. AI 工作台 → 查询「库存不足的 SKU」
+6. **AI 业务助手** → 问「订单从导入到发货怎么走？」查看分步指引与跳转；或问「库存不足的 SKU 有哪些？」
 7. 审计日志 API `GET /api/proj/audit/list` 可查到登录、入库、出库等关键动作
 
 验收要点：刷新页面不丢登录态；库存数量符合锁定/扣减规则；看板指标随履约变化。
@@ -111,10 +115,10 @@ cp .env.example .env   # 按需修改 JWT_SECRET 等
 docker compose up -d --build
 ```
 
-- 登录页：http://localhost:8080/view/login
-- 健康检查：http://localhost:8080/health
+- 登录页：http://localhost:8090/view/login
+- 健康检查：`GET /health`；详情（含 DB）：`GET /health/detail`
 
-容器首次启动自动执行 `migrate` + `seed`（`scripts/init-db.js`）。
+容器启动时 `scripts/init-db.js` 执行 migrate；**seed 在租户表为空时自动执行**，或设置 `SEED_ON_START=true` 强制 seed。
 
 ### VPS + HTTPS（Caddy）
 
@@ -132,13 +136,12 @@ docker build -f retail-ops/Dockerfile -t retail-ops .
 
 ## CI
 
-GitHub PAT 若无 `workflow` scope，仓库内 CI 以模板形式提供：
+仓库已包含 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)：
 
-```bash
-mkdir -p .github/workflows
-cp deploy/ci.yml.example .github/workflows/ci.yml
-git add .github/workflows/ci.yml && git commit -m "chore: enable CI"
-```
+- **build**：lint → unit tests → `check:routes` → `build:prod`
+- **e2e**（依赖 build）：MySQL service → init-db → 启动服务 → `e2e:smoke` + `test:pagination`
+
+若 GitHub PAT 无 `workflow` scope 无法推送 workflow，可从 `deploy/ci.yml.example` 复制启用。
 
 CI 需在 checkout 时同时拉取同级 `elpis`（monorepo）或改为已发布的 npm 包版本。
 
@@ -146,7 +149,7 @@ CI 需在 checkout 时同时拉取同级 `elpis`（monorepo）或改为已发布
 
 截图与 GIF 放在 `docs/screenshots/`，录制清单见 `docs/screenshots/README.md`。
 
-首屏推荐：**3D 仓库拣货路径**（`warehouse-3d.png` 或 `.gif`）。
+首屏推荐：**3D 仓库拣货路径**（`warehouse-3d.png` 或 `.gif`，文件待放入 `docs/screenshots/`）。
 
 ## 诚实边界
 
@@ -154,7 +157,7 @@ CI 需在 checkout 时同时拉取同级 `elpis`（monorepo）或改为已发布
 |---|---|
 | elpis 依赖 | 本地开发使用 `file:../elpis`；生产 Docker 用 monorepo 构建，尚未切到独立 npm 版本 |
 | 智能分仓 | 演示级规则，非真实 WMS 算法 |
-| AI 工作台 | 关键词匹配 + 只读 SQL 演示，非大模型接入 |
+| AI 业务助手 | 业务流程 playbook 关键词匹配 + 分步跳转；辅以只读 SQL 问数，非大模型接入 |
 | 财务/营销/客户 | 薄模块（列表 + 汇总 API），无完整业财闭环 |
 | 数据范围权限 | 菜单+操作两层 RBAC，未做行级 data_scope |
 | Redis | 本地可降级；生产建议启用会话与库存锁缓存 |
@@ -163,10 +166,12 @@ CI 需在 checkout 时同时拉取同级 `elpis`（monorepo）或改为已发布
 
 | 文件 | 说明 |
 |---|---|
-| `../elpis-retail-ops-prd.md` | 产品需求 |
-| `../elpis-retail-ops-architecture.md` | 架构设计 |
-| `../elpis-retail-ops-task-breakdown.md` | 任务拆解（M0→M8） |
-| `docs/screenshots/README.md` | 演示截图录制清单 |
+| [docs/README.md](docs/README.md) | **文档总索引**（M1→M8、演示、工程化） |
+| [docs/M7-AI业务助手-项目介绍.md](docs/M7-AI业务助手-项目介绍.md) | AI playbook 知识库与 API |
+| [docs/screenshots/README.md](docs/screenshots/README.md) | 演示截图录制清单 |
+| [docs/INVENTORY_CONCURRENCY.md](docs/INVENTORY_CONCURRENCY.md) | 库存与履约并发设计 |
+
+> PRD / 架构 / 任务拆解等上级文档若未入库，以本仓库 `docs/` 目录为准。
 
 ## License
 

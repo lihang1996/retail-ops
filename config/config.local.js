@@ -1,5 +1,6 @@
 module.exports = {
   name: 'retail-ops-local',
+  port: 8090,
   db: {
     client: 'mysql2',
     connection: {

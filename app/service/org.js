@@ -5,6 +5,7 @@
  * 角色绑定仅允许本租户 role_id；锁定用户不可锁定自身。
  */
 const bcrypt = require('bcryptjs')
+const crypto = require('crypto')
 const {
   ensureDb,
   getTenantId,
@@ -15,8 +16,40 @@ const {
   syncUserRoles,
   assertDeptInTenant,
 } = require('../common/org-helper')
+const { paginateQuery } = require('../common/pagination')
+const { applyFilters } = require('../common/apply-filters')
 
-const DEFAULT_PASSWORD = 'demo123'
+const DEMO_PASSWORD = process.env.RETAIL_DEMO_PASSWORD || 'demo123'
+const isProd = ['production', 'prod'].includes(process.env.NODE_ENV)
+
+const DEPARTMENT_LIST_FILTERS = [
+  { key: 'status', column: 'status' },
+  { key: 'dept_name', column: 'dept_name', op: 'like', transform: (value) => value.trim() },
+]
+
+const USER_LIST_FILTERS = [
+  { key: 'account', column: 'u.account', op: 'like', transform: (value) => value.trim() },
+  { key: 'display_name', column: 'u.display_name', op: 'like', transform: (value) => value.trim() },
+  { key: 'dept_id', column: 'tm.dept_id' },
+  { key: 'dept_name', column: 'd.dept_name', op: 'like', transform: (value) => value.trim() },
+  { key: 'status', column: 'u.status' },
+]
+
+const ROLE_LIST_FILTERS = [
+  { key: 'status', column: 'status' },
+  { key: 'role_code', column: 'role_code', op: 'like', transform: (value) => value.trim() },
+  { key: 'role_name', column: 'role_name', op: 'like', transform: (value) => value.trim() },
+]
+
+function generateInitialPassword() {
+  return `Ro-${crypto.randomBytes(6).toString('base64url')}9!`
+}
+
+function resolveInitialPassword(password) {
+  if (password) return { password, generated: false }
+  if (!isProd) return { password: DEMO_PASSWORD, generated: false }
+  return { password: generateInitialPassword(), generated: true }
+}
 
 module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
@@ -27,10 +60,8 @@ module.exports = (app) => {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
       let qb = db('departments').where({ tenant_id: tenantId })
-      if (query.status) qb = qb.andWhere({ status: query.status })
-      if (query.dept_name) qb = qb.andWhere('dept_name', 'like', `%${query.dept_name}%`)
-      const list = await qb.orderBy('created_at', 'desc')
-      return { list, total: list.length }
+      qb = applyFilters(qb, query, DEPARTMENT_LIST_FILTERS)
+      return paginateQuery(qb.orderBy('created_at', 'desc'), query, { countColumn: 'dept_id' })
     }
 
     /** 获取单个部门详情，校验 tenant_id 归属 */
@@ -132,13 +163,14 @@ module.exports = (app) => {
           'tm.status as member_status'
         )
 
-      if (query.account) qb = qb.andWhere('u.account', 'like', `%${query.account}%`)
-      if (query.status) qb = qb.andWhere('u.status', query.status)
+      qb = applyFilters(qb, query, USER_LIST_FILTERS)
 
-      const list = await qb.orderBy('u.created_at', 'desc')
+      const result = await paginateQuery(qb.orderBy('u.created_at', 'desc'), query, { countColumn: 'u.user_id' })
+      const userIds = result.list.map((item) => item.user_id)
       const roleRows = await db('user_roles as ur')
         .join('roles as r', 'ur.role_id', 'r.role_id')
         .where('r.tenant_id', tenantId)
+        .whereIn('ur.user_id', userIds.length ? userIds : [''])
         .select('ur.user_id', 'r.role_id', 'r.role_name', 'r.role_code')
 
       const roleMap = {}
@@ -152,11 +184,11 @@ module.exports = (app) => {
       })
 
       return {
-        list: list.map((item) => ({
+        list: result.list.map((item) => ({
           ...item,
           roles: roleMap[item.user_id] || [],
         })),
-        total: list.length,
+        total: result.total,
       }
     }
 
@@ -204,7 +236,8 @@ module.exports = (app) => {
 
       const userId = idGen.next('user')
       const memberId = idGen.next('member')
-      const passwordHash = await bcrypt.hash(password || DEFAULT_PASSWORD, 10)
+      const initial = resolveInitialPassword(password)
+      const passwordHash = await bcrypt.hash(initial.password, 10)
 
       await db.transaction(async (trx) => {
         await trx('users').insert({
@@ -231,7 +264,10 @@ module.exports = (app) => {
         detail: { account, roleIds },
       })
 
-      return { userId }
+      return {
+        userId,
+        initialPassword: initial.generated ? initial.password : undefined,
+      }
     }
 
     /** 更新用户资料、部门、角色或账号状态 */
@@ -291,7 +327,8 @@ module.exports = (app) => {
       const member = await db('tenant_members').where({ tenant_id: tenantId, user_id: userId }).first()
       if (!member) bizError('用户不存在', 40400)
 
-      const passwordHash = await bcrypt.hash(password || DEFAULT_PASSWORD, 10)
+      const initial = resolveInitialPassword(password)
+      const passwordHash = await bcrypt.hash(initial.password, 10)
       await db('users').where({ user_id: userId }).update({
         password_hash: passwordHash,
         login_fail_count: 0,
@@ -306,7 +343,10 @@ module.exports = (app) => {
         detail: { action: 'reset_password' },
       })
 
-      return { userId }
+      return {
+        userId,
+        initialPassword: initial.generated ? initial.password : undefined,
+      }
     }
 
     /** 锁定用户账号 30 分钟，不可锁定当前登录者 */
@@ -350,10 +390,8 @@ module.exports = (app) => {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
       let qb = db('roles').where({ tenant_id: tenantId })
-      if (query.status) qb = qb.andWhere({ status: query.status })
-      if (query.role_name) qb = qb.andWhere('role_name', 'like', `%${query.role_name}%`)
-      const list = await qb.orderBy('created_at', 'desc')
-      return { list, total: list.length }
+      qb = applyFilters(qb, query, ROLE_LIST_FILTERS)
+      return paginateQuery(qb.orderBy('created_at', 'desc'), query, { countColumn: 'role_id' })
     }
 
     /** 获取单个角色详情 */

@@ -1,2 +1,10 @@
-// schema 搜索项扩展
-export default {}
+import FilterSelect from './filter-select.vue'
+
+export default {
+  select: {
+    component: FilterSelect,
+  },
+  filterSelect: {
+    component: FilterSelect,
+  },
+}

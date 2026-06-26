@@ -3,7 +3,14 @@ module.exports = {
     get: {
       query: {
         type: 'object',
-        properties: { status: { type: 'string' } },
+        properties: {
+          status: { type: 'string' },
+          ending_soon: { type: 'string' },
+          activity_name: { type: 'string' },
+          activity_type: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
+        },
       },
     },
   },

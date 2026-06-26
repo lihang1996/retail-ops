@@ -6,6 +6,8 @@ module.exports = {
         properties: {
           brand_name: { type: 'string' },
           status: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
         },
       },
     },

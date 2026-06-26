@@ -1,4 +1,6 @@
 module.exports = (app) => {
+  const isProd = ['production', 'prod'].includes(process.env.NODE_ENV)
+
   return class HealthController {
     async ping(ctx) {
       ctx.body = { ok: true, name: app.config?.name || 'retail-ops' }
@@ -12,7 +14,7 @@ module.exports = (app) => {
           await app.db.raw('select 1')
           result.checks.db = { ok: true }
         } catch (e) {
-          result.checks.db = { ok: false, error: e.message }
+          result.checks.db = { ok: false, error: isProd ? 'unavailable' : e.message }
           result.ok = false
         }
       } else {
@@ -25,7 +27,7 @@ module.exports = (app) => {
           const val = await app.redis.get('health:ping')
           result.checks.redis = { ok: val === '1', status: app.redis.status || 'connected' }
         } catch (e) {
-          result.checks.redis = { ok: false, error: e.message }
+          result.checks.redis = { ok: false, error: isProd ? 'unavailable' : e.message }
         }
       } else {
         result.checks.redis = { ok: false, error: 'not configured' }

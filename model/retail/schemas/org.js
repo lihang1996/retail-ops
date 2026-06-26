@@ -29,7 +29,7 @@ const deptSchema = {
       searchOption: {
         comType: 'select',
         enumList: [
-          { label: '全部', value: '' },
+          { label: '全部', value: 'all' },
           { label: '启用', value: 'active' },
           { label: '禁用', value: 'disabled' },
         ],
@@ -72,6 +72,7 @@ const userSchema = {
       type: 'string',
       label: '姓名',
       tableOption: { width: 120 },
+      searchOption: { comType: 'input', placeholder: '输入姓名', clearable: true },
       createFormOption: { comType: 'input' },
       editFormOption: { comType: 'input' },
     },
@@ -79,6 +80,7 @@ const userSchema = {
       type: 'string',
       label: '部门',
       tableOption: { width: 140 },
+      searchOption: { comType: 'input', placeholder: '输入部门名称', clearable: true },
     },
     dept_id: {
       type: 'string',
@@ -93,7 +95,7 @@ const userSchema = {
       searchOption: {
         comType: 'select',
         enumList: [
-          { label: '全部', value: '' },
+          { label: '全部', value: 'all' },
           { label: '正常', value: 'active' },
           { label: '锁定', value: 'locked' },
         ],
@@ -128,6 +130,7 @@ const roleSchema = {
       type: 'string',
       label: '角色编码',
       tableOption: { width: 140 },
+      searchOption: { comType: 'input', placeholder: '输入角色编码', clearable: true },
       createFormOption: { comType: 'input' },
       editFormOption: { comType: 'input', disabled: true },
     },
@@ -146,7 +149,7 @@ const roleSchema = {
       searchOption: {
         comType: 'select',
         enumList: [
-          { label: '全部', value: '' },
+          { label: '全部', value: 'all' },
           { label: '启用', value: 'active' },
           { label: '禁用', value: 'disabled' },
         ],
@@ -172,11 +175,10 @@ function buildSchemaModule({ key, name, api, schema, rowButtons, headerButtons }
   const mainKey = Object.keys(schema.properties).find((k) => k.endsWith('_id'))
   const defaultHeader = [
     {
-      label: `新增${name.replace('管理', '')}`,
+      label: `新增${name.replace(/管理$|列表$/, '')}`,
       eventKey: 'showComponent',
       eventOption: { comName: 'createForm' },
       type: 'primary',
-      plain: true,
     },
   ]
   return {
@@ -194,7 +196,7 @@ function buildSchemaModule({ key, name, api, schema, rowButtons, headerButtons }
             label: '修改',
             eventKey: 'showComponent',
             eventOption: { comName: 'editForm' },
-            type: 'warning',
+            type: 'primary',
           },
         ],
       },

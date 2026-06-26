@@ -5,7 +5,10 @@ module.exports = {
         type: 'object',
         properties: {
           warehouse_name: { type: 'string' },
+          warehouse_code: { type: 'string' },
           status: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
         },
       },
     },
@@ -66,7 +69,11 @@ module.exports = {
         type: 'object',
         properties: {
           warehouse_id: { type: 'string' },
+          warehouse_name: { type: 'string' },
           location_code: { type: 'string' },
+          status: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
         },
       },
     },

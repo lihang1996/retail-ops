@@ -1,6 +1,6 @@
 /**
  * @module service/order
- * @description 订单服务：Excel 导入、模拟支付、分仓。
+ * @description 订单服务：Excel 导入、支付确认、分仓。
  * 状态流转：pending_payment → paid（支付+锁库存）→ allocated（分仓）→ shipped（由发货单驱动）。
  * 关键规则：支付时自动选仓并锁定库存，失败则回滚锁；导入按订单号/行分组，租户内订单号唯一。
  */
@@ -9,6 +9,7 @@ const {
   ensureDb,
   getTenantId,
   getOperatorId,
+  getRequestScope,
   bizError,
   audit,
   idGen,
@@ -24,6 +25,18 @@ const {
   resolveWarehouseForOrder,
   applyOrderAllocation,
 } = require('../common/order-helper')
+const { lockStock } = require('../common/stock-helper')
+const { ERROR_CODES } = require('../common/error-codes')
+const { paginateQuery } = require('../common/pagination')
+const { applyFilters } = require('../common/apply-filters')
+
+const ORDER_LIST_FILTERS = [
+  { key: 'status', column: 'o.status' },
+  { key: 'store_id', column: 'o.store_id' },
+  { key: 'order_no', column: 'o.order_no', op: 'like', transform: (value) => value.trim() },
+  { key: 'created_from', column: 'o.created_at', op: 'gte' },
+  { key: 'created_to', column: 'o.created_at', op: 'lte' },
+]
 
 const HEADER_MAP = {
   order_no: 'order_no',
@@ -71,32 +84,81 @@ module.exports = (app) => {
         .where('o.tenant_id', tenantId)
         .select('o.*', 's.store_name')
 
-      if (query.status) qb = qb.andWhere('o.status', query.status)
-      if (query.store_id) qb = qb.andWhere('o.store_id', query.store_id)
-      if (query.order_no) qb = qb.andWhere('o.order_no', 'like', `%${query.order_no}%`)
-      if (query.created_from) qb = qb.andWhere('o.created_at', '>=', query.created_from)
-      if (query.created_to) qb = qb.andWhere('o.created_at', '<=', query.created_to)
+      qb = applyFilters(qb, query, ORDER_LIST_FILTERS)
 
-      const list = await qb.orderBy('o.created_at', 'desc').limit(200)
-      return { list, total: list.length }
+      return paginateQuery(qb.orderBy('o.created_at', 'desc'), query, { countColumn: 'o.order_id' })
     }
 
-    /** 获取订单详情含明细、状态日志、发货单 */
+    /** 获取订单详情含明细、支付、库存锁、发货单、状态日志与审计 */
     async get(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
       const { order_id: orderId } = query
       if (!orderId) bizError('order_id 不能为空')
 
-      const order = await assertRowInTenant(db, 'orders', tenantId, 'order_id', orderId, '订单')
+      const order = await db('orders as o')
+        .leftJoin('stores as s', 'o.store_id', 's.store_id')
+        .leftJoin('warehouses as w', 'o.warehouse_id', 'w.warehouse_id')
+        .leftJoin('customers as c', 'o.customer_id', 'c.customer_id')
+        .where({ 'o.tenant_id': tenantId, 'o.order_id': orderId })
+        .select('o.*', 's.store_name', 'w.warehouse_name', 'c.customer_name')
+        .first()
+      if (!order) bizError('订单不存在', 40400)
+
       const items = await db('order_items').where({ tenant_id: tenantId, order_id: orderId })
       const logs = await db('order_status_logs')
         .where({ tenant_id: tenantId, order_id: orderId })
         .orderBy('created_at', 'desc')
         .limit(50)
-      const shipments = await db('shipments').where({ tenant_id: tenantId, order_id: orderId })
 
-      return { ...order, items, statusLogs: logs, shipments }
+      const payment = await db('payments')
+        .where({ tenant_id: tenantId, order_id: orderId })
+        .orderBy('created_at', 'desc')
+        .first()
+
+      const lockIds = items.map((i) => i.lock_id).filter(Boolean)
+      const stockLocks = lockIds.length
+        ? await db('stock_locks').where({ tenant_id: tenantId }).whereIn('lock_id', lockIds)
+        : []
+
+      const shipments = await db('shipments').where({ tenant_id: tenantId, order_id: orderId })
+      const shipmentIds = shipments.map((s) => s.shipment_id)
+      const shipmentItems = shipmentIds.length
+        ? await db('shipment_items as si')
+          .leftJoin('warehouse_locations as loc', 'si.suggested_location_id', 'loc.location_id')
+          .leftJoin('product_skus as sku', 'si.sku_id', 'sku.sku_id')
+          .where('si.tenant_id', tenantId)
+          .whereIn('si.shipment_id', shipmentIds)
+          .select('si.*', 'sku.sku_code', 'loc.location_code as suggested_location_code')
+        : []
+
+      const shipmentItemMap = shipmentItems.reduce((map, item) => {
+        if (!map[item.shipment_id]) map[item.shipment_id] = []
+        map[item.shipment_id].push(item)
+        return map
+      }, {})
+
+      const auditLogs = await db('audit_logs')
+        .where({ tenant_id: tenantId })
+        .where((qb) => {
+          qb.where({ object_id: orderId })
+          if (shipmentIds.length) qb.orWhereIn('object_id', shipmentIds)
+        })
+        .orderBy('created_at', 'desc')
+        .limit(30)
+
+      return {
+        ...order,
+        items,
+        payment,
+        stockLocks,
+        statusLogs: logs,
+        shipments: shipments.map((sh) => ({
+          ...sh,
+          items: shipmentItemMap[sh.shipment_id] || [],
+        })),
+        auditLogs,
+      }
     }
 
     /** 从 Excel 批量导入订单，按订单号分组，逐组事务写入 */
@@ -282,49 +344,39 @@ module.exports = (app) => {
       return { ...batch, errors }
     }
 
-    /** 模拟支付：选仓、锁库存、写入 payment，状态 pending_payment → paid */
-    async mockPay(ctx, body = {}) {
-      const db = ensureDb(app)
-      const tenantId = getTenantId(ctx)
-      const operatorId = getOperatorId(ctx)
-      const { order_id: orderId } = body
+    /** 支付确认：事务内选仓、锁库存、写 payment，状态 pending_payment → paid */
+    async pay(ctx, body = {}) {
+      const { db, tenantId, operatorId } = getRequestScope(app, ctx)
+      const { order_id: orderId, pay_method: payMethod = 'online' } = body
       if (!orderId) bizError('order_id 不能为空')
 
-      const order = await assertRowInTenant(db, 'orders', tenantId, 'order_id', orderId, '订单')
-      assertOrderStatus(order, [ORDER_STATUS.PENDING_PAYMENT], '支付')
-
-      const items = await db('order_items').where({ tenant_id: tenantId, order_id: orderId })
-      if (!items.length) bizError('订单无明细', 42200)
-
-      const { warehouse, reason } = await findWarehouseForItems(db, tenantId, items)
-
-      const acquiredLocks = []
-      try {
-        for (const item of items) {
-          const lockResult = await app.service.stock.lock(ctx, {
-            warehouse_id: warehouse.warehouse_id,
-            sku_id: item.sku_id,
-            qty: item.qty,
-            ref_type: 'order',
-            ref_id: orderId,
-          })
-          acquiredLocks.push(lockResult.lockId)
-          await db('order_items').where({ item_id: item.item_id }).update({ lock_id: lockResult.lockId })
-        }
-      } catch (e) {
-        for (const lockId of acquiredLocks) {
-          try {
-            await app.service.stock.unlock(ctx, { lock_id: lockId })
-          } catch {
-            /* rollback best effort */
-          }
-        }
-        throw e
-      }
+      let payResult
 
       await db.transaction(async (trx) => {
-        const fresh = await trx('orders').where({ order_id: orderId }).first()
-        assertOrderStatus(fresh, [ORDER_STATUS.PENDING_PAYMENT], '支付')
+        const order = await trx('orders')
+          .where({ tenant_id: tenantId, order_id: orderId })
+          .forUpdate()
+          .first()
+        if (!order) bizError('订单不存在', ERROR_CODES.NOT_FOUND)
+        assertOrderStatus(order, [ORDER_STATUS.PENDING_PAYMENT], '支付')
+
+        const items = await trx('order_items').where({ tenant_id: tenantId, order_id: orderId })
+        if (!items.length) bizError('订单无明细', ERROR_CODES.BAD_REQUEST)
+
+        const { warehouse, reason } = await findWarehouseForItems(trx, tenantId, items)
+
+        for (const item of items) {
+          const lockId = await lockStock(trx, {
+            tenantId,
+            operatorId,
+            warehouseId: warehouse.warehouse_id,
+            skuId: item.sku_id,
+            qty: item.qty,
+            refType: 'order',
+            refId: orderId,
+          })
+          await trx('order_items').where({ item_id: item.item_id }).update({ lock_id: lockId })
+        }
 
         const paymentId = idGen.next('pay')
         await trx('payments').insert({
@@ -332,15 +384,22 @@ module.exports = (app) => {
           tenant_id: tenantId,
           order_id: orderId,
           amount: order.total_amount,
-          pay_method: 'mock',
+          pay_method: payMethod || 'online',
           status: 'success',
           paid_at: trx.fn.now(),
         })
 
-        await trx('orders').where({ order_id: orderId }).update({
-          status: ORDER_STATUS.PAID,
-          warehouse_id: warehouse.warehouse_id,
-        })
+        const affected = await trx('orders')
+          .where({
+            tenant_id: tenantId,
+            order_id: orderId,
+            status: ORDER_STATUS.PENDING_PAYMENT,
+          })
+          .update({
+            status: ORDER_STATUS.PAID,
+            warehouse_id: warehouse.warehouse_id,
+          })
+        if (affected !== 1) bizError('订单状态已变更，无法执行支付', ERROR_CODES.CONFLICT)
 
         await writeOrderStatusLog(trx, {
           tenantId,
@@ -350,16 +409,18 @@ module.exports = (app) => {
           remark: reason,
           operatorId,
         })
+
+        payResult = { orderId, warehouseId: warehouse.warehouse_id, reason }
       })
 
       await audit(app, ctx, {
-        actionCode: 'order:mock_pay',
+        actionCode: 'order:pay',
         objectType: 'order',
         objectId: orderId,
-        detail: { warehouseId: warehouse.warehouse_id },
+        detail: { warehouseId: payResult.warehouseId },
       })
 
-      return { orderId, warehouseId: warehouse.warehouse_id, reason }
+      return payResult
     }
 
     /** 手动分仓：paid/allocated → allocated，绑定 warehouse_id */

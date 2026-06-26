@@ -24,5 +24,74 @@ jobs:
       - name: Install retail-ops
         run: npm install
 
+      - name: Static checks
+        run: npm run lint
+
       - name: Production build
         run: npm run build:prod
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: retail_ops
+          MYSQL_USER: retail
+          MYSQL_PASSWORD: retail123
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -prootpass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      NODE_ENV: production
+      PORT: 8090
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: retail
+      DB_PASSWORD: retail123
+      DB_NAME: retail_ops
+      JWT_SECRET: ci-retail-ops-jwt-secret
+      SEED_ON_START: 'true'
+      SMOKE_BASE_URL: http://127.0.0.1:8090
+      SMOKE_ACCOUNT: admin@retail.demo
+      SMOKE_PASSWORD: demo123
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install elpis (monorepo)
+        run: |
+          if [ -d ../elpis ]; then cd ../elpis && npm install; fi
+
+      - name: Install retail-ops
+        run: npm install
+
+      - name: Static checks
+        run: npm run lint
+
+      - name: Build frontend
+        run: npm run build:prod
+
+      - name: Init database
+        run: node scripts/init-db.js
+
+      - name: Start server
+        run: |
+          node serve.js &
+          sleep 5
+
+      - name: API smoke tests
+        run: npm run e2e:smoke
+
+      - name: Pagination smoke tests
+        run: npm run test:pagination

@@ -12,6 +12,21 @@ const {
   assertRowInTenant,
 } = require('../common/org-helper')
 const { computeLocationRisk } = require('../common/warehouse-3d-helper')
+const { paginateQuery } = require('../common/pagination')
+const { applyFilters } = require('../common/apply-filters')
+
+const WAREHOUSE_LIST_FILTERS = [
+  { key: 'status', column: 'status' },
+  { key: 'warehouse_name', column: 'warehouse_name', op: 'like', transform: (value) => value.trim() },
+  { key: 'warehouse_code', column: 'warehouse_code', op: 'like', transform: (value) => value.trim() },
+]
+
+const WAREHOUSE_LOCATION_FILTERS = [
+  { key: 'warehouse_id', column: 'l.warehouse_id' },
+  { key: 'warehouse_name', column: 'w.warehouse_name', op: 'like', transform: (value) => value.trim() },
+  { key: 'location_code', column: 'l.location_code', op: 'like', transform: (value) => value.trim() },
+  { key: 'status', column: 'l.status' },
+]
 
 module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
@@ -22,10 +37,85 @@ module.exports = (app) => {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
       let qb = db('warehouses').where({ tenant_id: tenantId })
-      if (query.status) qb = qb.andWhere({ status: query.status })
-      if (query.warehouse_name) qb = qb.andWhere('warehouse_name', 'like', `%${query.warehouse_name}%`)
-      const list = await qb.orderBy('created_at', 'desc')
-      return { list, total: list.length }
+      qb = applyFilters(qb, query, WAREHOUSE_LIST_FILTERS)
+      const result = await paginateQuery(qb.orderBy('created_at', 'desc'), query, { countColumn: 'warehouse_id', maxPageSize: 500 })
+      const warehouseIds = result.list.map((item) => item.warehouse_id)
+
+      if (!warehouseIds.length) return result
+
+      const locationRows = await db('warehouse_locations')
+        .where({ tenant_id: tenantId })
+        .whereIn('warehouse_id', warehouseIds)
+        .select('warehouse_id')
+        .count({ location_count: 'location_id' })
+        .sum({ location_capacity: 'capacity' })
+        .groupBy('warehouse_id')
+
+      const stockRows = await db('stocks')
+        .where({ tenant_id: tenantId })
+        .whereIn('warehouse_id', warehouseIds)
+        .select('warehouse_id')
+        .countDistinct({ stock_sku_count: 'sku_id' })
+        .sum({
+          total_qty: 'total_qty',
+          available_qty: 'available_qty',
+          locked_qty: 'locked_qty',
+        })
+        .select(db.raw('SUM(CASE WHEN available_qty > 0 AND available_qty <= warning_qty THEN 1 ELSE 0 END) as risk_sku_count'))
+        .groupBy('warehouse_id')
+
+      const stockedLocationRows = await db('stock_locations as sl')
+        .join('warehouse_locations as loc', function joinLocation() {
+          this.on('sl.location_id', 'loc.location_id').andOn('sl.tenant_id', 'loc.tenant_id')
+        })
+        .where('sl.tenant_id', tenantId)
+        .whereIn('loc.warehouse_id', warehouseIds)
+        .select('loc.warehouse_id')
+        .countDistinct({ stocked_location_count: 'sl.location_id' })
+        .groupBy('loc.warehouse_id')
+
+      const shipmentRows = await db('shipments')
+        .where({ tenant_id: tenantId })
+        .whereIn('warehouse_id', warehouseIds)
+        .whereIn('status', ['created', 'picking', 'picked'])
+        .select('warehouse_id')
+        .count({ active_shipment_count: 'shipment_id' })
+        .groupBy('warehouse_id')
+
+      const byWarehouse = (rows) => rows.reduce((map, row) => {
+        map[row.warehouse_id] = row
+        return map
+      }, {})
+
+      const locationMap = byWarehouse(locationRows)
+      const stockMap = byWarehouse(stockRows)
+      const stockedLocationMap = byWarehouse(stockedLocationRows)
+      const shipmentMap = byWarehouse(shipmentRows)
+
+      return {
+        ...result,
+        list: result.list.map((warehouse) => {
+          const loc = locationMap[warehouse.warehouse_id] || {}
+          const stock = stockMap[warehouse.warehouse_id] || {}
+          const stocked = stockedLocationMap[warehouse.warehouse_id] || {}
+          const shipment = shipmentMap[warehouse.warehouse_id] || {}
+          const locationCount = parseInt(loc.location_count, 10) || 0
+          const stockedLocationCount = parseInt(stocked.stocked_location_count, 10) || 0
+          return {
+            ...warehouse,
+            location_count: locationCount,
+            stocked_location_count: stockedLocationCount,
+            location_capacity: parseInt(loc.location_capacity, 10) || 0,
+            stock_sku_count: parseInt(stock.stock_sku_count, 10) || 0,
+            total_qty: parseInt(stock.total_qty, 10) || 0,
+            available_qty: parseInt(stock.available_qty, 10) || 0,
+            locked_qty: parseInt(stock.locked_qty, 10) || 0,
+            risk_sku_count: parseInt(stock.risk_sku_count, 10) || 0,
+            active_shipment_count: parseInt(shipment.active_shipment_count, 10) || 0,
+            location_fill_rate: locationCount > 0 ? Math.round((stockedLocationCount / locationCount) * 100) : 0,
+          }
+        }),
+      }
     }
 
     /** 获取单个仓库详情 */
@@ -99,11 +189,40 @@ module.exports = (app) => {
         .where('l.tenant_id', tenantId)
         .select('l.*', 'w.warehouse_name')
 
-      if (query.warehouse_id) qb = qb.andWhere('l.warehouse_id', query.warehouse_id)
-      if (query.location_code) qb = qb.andWhere('l.location_code', 'like', `%${query.location_code}%`)
+      qb = applyFilters(qb, query, WAREHOUSE_LOCATION_FILTERS)
 
-      const list = await qb.orderBy('l.created_at', 'desc')
-      return { list, total: list.length }
+      const result = await paginateQuery(qb.orderBy('l.created_at', 'desc'), query, { countColumn: 'l.location_id', maxPageSize: 500 })
+      const locationIds = result.list.map((item) => item.location_id)
+      if (!locationIds.length) return result
+
+      const stockRows = await db('stock_locations')
+        .where({ tenant_id: tenantId })
+        .whereIn('location_id', locationIds)
+        .select('location_id')
+        .sum({ current_qty: 'qty' })
+        .countDistinct({ sku_count: 'sku_id' })
+        .groupBy('location_id')
+
+      const stockMap = stockRows.reduce((map, row) => {
+        map[row.location_id] = row
+        return map
+      }, {})
+
+      return {
+        ...result,
+        list: result.list.map((location) => {
+          const stock = stockMap[location.location_id] || {}
+          const currentQty = parseInt(stock.current_qty, 10) || 0
+          const capacity = parseInt(location.capacity, 10) || 0
+          return {
+            ...location,
+            current_qty: currentQty,
+            sku_count: parseInt(stock.sku_count, 10) || 0,
+            capacity_used_pct: capacity > 0 ? Math.round((currentQty / capacity) * 100) : 0,
+            risk_level: computeLocationRisk(currentQty, capacity),
+          }
+        }),
+      }
     }
 
     /** 获取库位详情含 SKU 分布、风险等级、近期流水 */

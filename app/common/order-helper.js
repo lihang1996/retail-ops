@@ -1,37 +1,26 @@
-/**
- * @module common/order-helper
- * @description 订单与发货状态常量、分仓策略、状态日志、拣货库位建议。
- * 关键规则：findWarehouseForItems 选各 SKU 均可满足且最小可用量最大的仓库；
- * 支付后 warehouse_id 固定，分仓沿用不再重选。
- */
+/** 订单与发货辅助：状态常量、分仓、状态日志、拣货库位建议。详见 docs/INVENTORY_CONCURRENCY.md */
 const { idGen, bizError } = require('./org-helper')
+const { ERROR_CODES } = require('./error-codes')
+const { generateOrderNo } = require('./business-no')
 
-/** 订单状态枚举 */
+/** 订单状态：pending_payment → paid → allocated → shipped */
 const ORDER_STATUS = {
-  PENDING_PAYMENT: 'pending_payment',
-  PAID: 'paid',
-  ALLOCATED: 'allocated',
-  SHIPPED: 'shipped',
-  CANCELLED: 'cancelled',
+  PENDING_PAYMENT: 'pending_payment', // 待支付（导入后初始状态）
+  PAID: 'paid',                       // 已支付（库存已锁定）
+  ALLOCATED: 'allocated',             // 已分仓（已分配履约仓库）
+  SHIPPED: 'shipped',                 // 已发货（已出库）
+  CANCELLED: 'cancelled',             // 已取消
 }
 
-/** 发货单状态枚举 */
+/** 发货单状态：created → picking → picked → shipped */
 const SHIPMENT_STATUS = {
-  CREATED: 'created',
-  PICKING: 'picking',
-  PICKED: 'picked',
-  PACKED: 'packed',
-  SHIPPED: 'shipped',
+  CREATED: 'created',   // 已创建（待拣货）
+  PICKING: 'picking',   // 拣货中（拣货员已领取任务）
+  PICKED: 'picked',     // 已拣货（待打包发货）
+  PACKED: 'packed',     // 已打包（预留状态）
+  SHIPPED: 'shipped',   // 已发货（已出库）
 }
 
-/** 生成唯一订单号（时间戳 + 随机后缀） */
-function generateOrderNo() {
-  const d = new Date()
-  const pad = (n, len = 2) => String(n).padStart(len, '0')
-  return `ORD${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}${Math.random().toString(36).slice(2, 6).toUpperCase()}`
-}
-
-/** 写入订单状态变更日志 */
 async function writeOrderStatusLog(trx, payload) {
   await trx('order_status_logs').insert({
     log_id: idGen.next('olog'),
@@ -44,20 +33,51 @@ async function writeOrderStatusLog(trx, payload) {
   })
 }
 
-/** 断言订单当前状态允许执行指定操作 */
 function assertOrderStatus(order, allowed, label = '操作') {
   if (!allowed.includes(order.status)) {
-    bizError(`订单状态为 ${order.status}，无法执行${label}`, 40900)
+    bizError(`订单状态为 ${order.status}，无法执行${label}`, ERROR_CODES.CONFLICT)
   }
 }
 
-/** 遍历活跃仓库，选取能完全满足明细且最小可用库存最大的仓 */
+/** 按 sku_id 聚合订单明细数量（同一 SKU 多行合并） */
+function aggregateItemsBySku(items) {
+  const qtyBySku = new Map()
+  for (const item of items) {
+    const skuId = item.sku_id
+    if (!skuId) continue
+    const qty = parseInt(item.qty, 10) || 0
+    qtyBySku.set(skuId, (qtyBySku.get(skuId) || 0) + qty)
+  }
+  return qtyBySku
+}
+
+/**
+ * 智能分仓：批量拉取仓库与库存矩阵，选各 SKU 均可满足且最小可用量最大的仓。
+ * 须在调用方事务内调用，与 lockStock 同事务完成选仓+锁定。
+ */
 async function findWarehouseForItems(trx, tenantId, items) {
+  const qtyBySku = aggregateItemsBySku(items)
+  if (!qtyBySku.size) bizError('订单无有效明细', ERROR_CODES.BAD_REQUEST)
+
   const warehouses = await trx('warehouses')
     .where({ tenant_id: tenantId, status: 'active' })
     .orderBy('created_at', 'asc')
+  if (!warehouses.length) bizError('无可用仓库', ERROR_CODES.CONFLICT)
 
-  if (!warehouses.length) bizError('无可用仓库', 40900)
+  const warehouseIds = warehouses.map((wh) => wh.warehouse_id)
+  const skuIds = [...qtyBySku.keys()]
+
+  const stockRows = await trx('stocks')
+    .where({ tenant_id: tenantId })
+    .whereIn('warehouse_id', warehouseIds)
+    .whereIn('sku_id', skuIds)
+    .select('warehouse_id', 'sku_id', 'available_qty')
+
+  const matrix = new Map()
+  for (const row of stockRows) {
+    if (!matrix.has(row.warehouse_id)) matrix.set(row.warehouse_id, new Map())
+    matrix.get(row.warehouse_id).set(row.sku_id, Number(row.available_qty) || 0)
+  }
 
   let best = null
   let bestScore = -1
@@ -65,13 +85,11 @@ async function findWarehouseForItems(trx, tenantId, items) {
   for (const wh of warehouses) {
     let canFulfill = true
     let minAvailable = Infinity
+    const whStock = matrix.get(wh.warehouse_id) || new Map()
 
-    for (const item of items) {
-      const stock = await trx('stocks')
-        .where({ tenant_id: tenantId, warehouse_id: wh.warehouse_id, sku_id: item.sku_id })
-        .first()
-      const available = stock?.available_qty || 0
-      if (available < item.qty) {
+    for (const [skuId, needQty] of qtyBySku) {
+      const available = whStock.get(skuId) || 0
+      if (available < needQty) {
         canFulfill = false
         break
       }
@@ -84,23 +102,27 @@ async function findWarehouseForItems(trx, tenantId, items) {
     }
   }
 
-  if (!best) bizError('无仓库可满足订单库存需求', 40900)
-  return { warehouse: best, reason: `选择仓库 ${best.warehouse_name}（各 SKU 可用库存均满足，最小可用 ${bestScore}）` }
+  if (!best) bizError('无仓库可满足订单库存需求', ERROR_CODES.CONFLICT)
+  return {
+    warehouse: best,
+    reason: `选择仓库 ${best.warehouse_name}（各 SKU 可用库存均满足，最小可用 ${bestScore}）`,
+  }
 }
 
-/** 分仓时优先沿用订单已绑定的 warehouse_id，否则自动选仓 */
+/** 优先沿用 order.warehouse_id，否则自动选仓 */
 async function resolveWarehouseForOrder(db, tenantId, order, items) {
   if (order.warehouse_id) {
+    // 优先沿用已绑定的仓库
     const warehouse = await db('warehouses')
       .where({ tenant_id: tenantId, warehouse_id: order.warehouse_id })
       .first()
-    if (!warehouse) bizError('仓库不存在', 40400)
+    if (!warehouse) bizError('仓库不存在', ERROR_CODES.NOT_FOUND)
     return { warehouse, reason: '沿用支付时选定仓库' }
   }
+  // 未绑定仓库，自动选仓
   return findWarehouseForItems(db, tenantId, items)
 }
 
-/** 将订单状态更新为 allocated 并绑定仓库，写状态日志 */
 async function applyOrderAllocation(trx, { tenantId, orderId, fromStatus, warehouse, reason, operatorId }) {
   await trx('orders').where({ order_id: orderId }).update({
     status: ORDER_STATUS.ALLOCATED,
@@ -124,7 +146,7 @@ async function suggestLocationForSku(trx, tenantId, warehouseId, skuId) {
     .andWhere('loc.warehouse_id', warehouseId)
     .andWhere('sl.sku_id', skuId)
     .andWhere('sl.qty', '>', 0)
-    .orderBy('sl.qty', 'desc')
+    .orderBy('sl.qty', 'desc')  // 按库存数量降序
     .select('sl.location_id', 'loc.location_code')
     .first()
   return row?.location_id || null
@@ -136,6 +158,7 @@ module.exports = {
   generateOrderNo,
   writeOrderStatusLog,
   assertOrderStatus,
+  aggregateItemsBySku,
   findWarehouseForItems,
   resolveWarehouseForOrder,
   applyOrderAllocation,

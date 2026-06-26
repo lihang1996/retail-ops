@@ -13,10 +13,12 @@ function buildOpsMenu() {
   return {
     key: 'ops',
     name: '运营中心',
+    permissionCode: 'menu:ops',
     menuType: 'module',
     moduleType: 'sider',
     siderConfig: {
       menu: [
+    custom('ops_console', '运营总览', '/ops-console'),
         custom('approval_todo', '审批待办', '/approval-todo'),
         custom('audit_log', '审计日志', '/audit-log'),
         custom('customer_list', '客户中心', '/customer-list'),

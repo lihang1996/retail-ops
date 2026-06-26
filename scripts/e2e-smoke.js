@@ -5,9 +5,9 @@
  *   npm run build:prod && npm run dev   # 另开终端
  *   node scripts/e2e-smoke.js
  *
- * 环境变量：SMOKE_BASE_URL（默认 http://127.0.0.1:8080）
+ * 环境变量：SMOKE_BASE_URL（默认 http://127.0.0.1:8090）
  */
-const BASE = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:8080'
+const BASE = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:8090'
 const ACCOUNT = process.env.SMOKE_ACCOUNT || 'admin@retail.demo'
 const PASSWORD = process.env.SMOKE_PASSWORD || 'demo123'
 const PROJ = 'retail'
@@ -94,10 +94,55 @@ async function main() {
   if (orders.status === 200) ok('GET order/list')
   else fail('GET order/list', orders.json?.message)
 
-  // 6. warehouse layout (3D)
-  const layout = await authGet('/api/proj/warehouse/layout')
-  if (layout.status === 200) ok('GET warehouse/layout')
-  else fail('GET warehouse/layout', layout.json?.message)
+  // 6. warehouse layout + risk map (3D)
+  const layout = await authGet('/api/proj/warehouse/layout?warehouse_id=wh_main')
+  if (layout.status === 200 && layout.json?.success !== false) {
+    ok(`GET warehouse/layout (${layout.json?.data?.locations?.length || 0} 库位)`)
+  } else fail('GET warehouse/layout', layout.json?.message)
+
+  const riskMap = await authGet('/api/proj/warehouse/risk_map?warehouse_id=wh_main')
+  const stocked = Object.values(riskMap.json?.data?.riskMap || {}).filter((r) => (r.qty || 0) > 0).length
+  if (riskMap.status === 200 && riskMap.json?.success !== false) {
+    ok(`GET warehouse/risk_map (${stocked} 有货)`)
+  } else fail('GET warehouse/risk_map', riskMap.json?.message)
+
+  const locationStock = await authGet('/api/proj/stock/location/list?warehouse_id=wh_main&page=1&size=500')
+  const locationRows = Array.isArray(locationStock.json?.data) ? locationStock.json.data : []
+  const warehouseRiskMap = riskMap.json?.data?.riskMap || {}
+  const inconsistentLocations = locationRows.filter((row) => {
+    const risk = warehouseRiskMap[row.location_id]
+    return !risk
+      || risk.level !== row.risk_level
+      || Number(risk.qty || 0) !== Number(row.location_total_qty || 0)
+  })
+  const comparedLocationCount = new Set(locationRows.map((row) => row.location_id)).size
+  if (
+    locationStock.status === 200
+    && locationStock.json?.success !== false
+    && inconsistentLocations.length === 0
+  ) {
+    ok(`GET stock/location_list 与 3D 风险一致 (${comparedLocationCount} 库位)`)
+  } else {
+    fail(
+      'GET stock/location_list 与 3D 风险一致',
+      inconsistentLocations.length
+        ? `${inconsistentLocations.length} 条明细口径不一致`
+        : locationStock.json?.message
+    )
+  }
+
+  // 6b. product module (store / category / brand / product)
+  for (const [label, path] of [
+    ['store', '/api/proj/store/list'],
+    ['category', '/api/proj/category/list'],
+    ['brand', '/api/proj/brand/list'],
+    ['product', '/api/proj/product/list'],
+  ]) {
+    const res = await authGet(path)
+    const n = res.json?.data?.length ?? 0
+    if (res.status === 200 && res.json?.success !== false) ok(`GET ${label}/list (${n})`)
+    else fail(`GET ${label}/list`, res.json?.message)
+  }
 
   // 7. audit list
   const audit = await authGet('/api/proj/audit/list')
@@ -127,12 +172,20 @@ async function main() {
   if (customer.status === 200) ok('GET customer/list')
   else fail('GET customer/list', customer.json?.message)
 
-  // 12. marketing list
+  // 12. fulfillment workbench (paginated)
+  const fulfillment = await authGet('/api/proj/workbench/fulfillment?tab=all&page=1&page_size=20')
+  if (fulfillment.status === 200 && fulfillment.json?.success !== false) {
+    ok('GET workbench/fulfillment')
+  } else {
+    fail('GET workbench/fulfillment', fulfillment.json?.message)
+  }
+
+  // 13. marketing list
   const marketing = await authGet('/api/proj/marketing/activity/list')
   if (marketing.status === 200) ok('GET marketing/activity/list')
   else fail('GET marketing/activity/list', marketing.json?.message)
 
-  // 13. session refresh (me)
+  // 14. session refresh (me)
   const me = await request('GET', '/api/auth/me', { token })
   if (me.status === 200 && me.json?.data?.user) ok('GET auth/me (session)')
   else fail('GET auth/me', me.json?.message)

@@ -2,6 +2,8 @@
 
 将素材放在本目录，README 首屏引用 `warehouse-3d.png`（或 `.gif`）。
 
+> **当前状态**：目录内仅有本 README，png/gif **待录制提交**。
+
 ## 建议文件名
 
 | 文件 | 页面 / 场景 | 账号建议 |
@@ -14,7 +16,8 @@
 | `fulfillment.png` | 履约中心：导入→支付→分仓→发货 | ops |
 | `warehouse-3d.png` / `warehouse-3d.gif` | 3D 仓库风险热力 + 拣货路径 | warehouse |
 | `dashboard-overview.png` | 经营总览看板 | admin |
-| `ai-workbench.png` | AI 工作台查询结果 | analyst |
+| `ai-workbench.png` | AI 业务助手：playbook 分步指引（如「订单怎么发货」） | analyst / admin |
+| `ai-playbook-steps.png` | AI 回答中的步骤列表 + 跳转链接特写 | analyst |
 
 ## 录制要点
 
@@ -31,6 +34,7 @@
 → 入库 SKU-DEMO-001
 → 履约导入订单 → 支付 → 分仓 → 发货 → 拣货 → 出库
 → 3D 仓库查看路径
+→ AI 业务助手问「订单从导入到发货怎么走？」
 → 看板指标变化
 ```
 

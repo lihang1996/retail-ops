@@ -5,8 +5,16 @@ module.exports = {
         type: 'object',
         properties: {
           product_name: { type: 'string' },
+          keyword: { type: 'string' },
           status: { type: 'string' },
           category_id: { type: 'string' },
+          category_name: { type: 'string' },
+          brand_id: { type: 'string' },
+          brand_name: { type: 'string' },
+          stock_risk: { type: 'string' },
+          approval_status: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
         },
       },
     },
@@ -58,8 +66,11 @@ module.exports = {
     get: {
       query: {
         type: 'object',
-        properties: { product_id: { type: 'string' } },
-        required: ['product_id'],
+        properties: {
+          product_id: { type: 'string' },
+          keyword: { type: 'string' },
+          limit: { type: 'integer' },
+        },
       },
     },
   },

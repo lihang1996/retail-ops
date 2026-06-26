@@ -1,0 +1,67 @@
+/** 订单履约：导入 → 支付 → 分仓 → 发货单 → 拣货 → 出库 */
+module.exports = {
+  id: 'order-fulfillment',
+  title: '订单履约全流程',
+  keywords: [
+    '履约', '发货', '出库', '导入订单', '怎么发货', '订单怎么处理', '订单流程',
+    '支付', '分仓', '拣货', '发货单', 'excel', '走通',
+  ],
+  permissionsAny: ['order:view'],
+  summary: '从 Excel 导入订单到出库发货的完整操作路径，适用于运营与仓库协同。',
+  stateFlow: 'pending_payment → paid → allocated → shipped（发货单：created → picking → picked → shipped）',
+  steps: [
+    {
+      order: 1,
+      title: '导入订单',
+      description: '在履约中心上传 Excel（含店铺、SKU、数量、单价），系统创建「待支付」订单。',
+      pathKey: 'fulfillment',
+      pathQuery: { tab: 'pending_payment' },
+      linkLabel: '打开履约中心 · 待支付',
+    },
+    {
+      order: 2,
+      title: '支付确认',
+      description: '选中待支付订单，点击「支付」（API: POST /api/proj/order/pay）。Demo 环境无真实支付网关，系统自动选仓并锁定库存，订单变为「已支付」。',
+      pathKey: 'fulfillment',
+      pathQuery: { tab: 'paid' },
+      linkLabel: '查看已支付订单',
+    },
+    {
+      order: 3,
+      title: '分仓（可选）',
+      description: '支付时通常已绑定仓库；也可在「已支付」状态手动分仓，将订单置为「已分仓」。',
+      pathKey: 'fulfillment',
+      pathQuery: { tab: 'allocated' },
+      linkLabel: '查看已分仓订单',
+    },
+    {
+      order: 4,
+      title: '生成发货单',
+      description: '对已分仓订单点击「生成发货单」，系统创建发货单并建议拣货库位。',
+      pathKey: 'fulfillment',
+      pathQuery: { tab: 'await_pick' },
+      linkLabel: '待拣货队列',
+    },
+    {
+      order: 5,
+      title: '开始拣货 → 确认拣货',
+      description: '对发货单依次「开始拣货」「确认拣货」，状态变为 picked。',
+      pathKey: 'fulfillment',
+      pathQuery: { tab: 'await_outbound' },
+      linkLabel: '待出库队列',
+    },
+    {
+      order: 6,
+      title: '出库发货',
+      description: '点击「出库发货」扣减库存，订单变为已发货；可在 3D 仓库查看拣货路径。',
+      pathKey: 'warehouse_3d',
+      pathQuery: {},
+      linkLabel: '打开 3D 仓库',
+    },
+  ],
+  suggestQuestions: [
+    '订单从导入到发货怎么走？',
+    '怎么支付订单？',
+    '拣货出库怎么操作？',
+  ],
+}

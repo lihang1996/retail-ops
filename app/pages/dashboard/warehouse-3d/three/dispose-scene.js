@@ -9,8 +9,12 @@ export function disposeSceneResources({ renderer, controls, scene, sharedGeometr
       }
       if (obj.material) {
         if (Array.isArray(obj.material)) {
-          obj.material.forEach((m) => m.dispose())
+          obj.material.forEach((m) => {
+            m.map?.dispose?.()
+            m.dispose()
+          })
         } else {
+          obj.material.map?.dispose?.()
           obj.material.dispose()
         }
       }

@@ -5,12 +5,13 @@
  * syncUserRoles 仅绑定本租户有效 role_id。
  */
 const idGen = require('./id')
+const { ERROR_CODES } = require('./error-codes')
 
 /** 确保 app.db 已配置，否则抛出 50000 */
 function ensureDb(app) {
   if (!app.db) {
     const err = new Error('数据库未配置')
-    err.code = 50000
+    err.code = ERROR_CODES.INTERNAL
     throw err
   }
   return app.db
@@ -26,11 +27,20 @@ function getOperatorId(ctx) {
   return ctx.state.user?.user_id
 }
 
-/** 抛出带业务错误码的异常，默认 42200 */
-function bizError(message, code = 42200) {
+/** 抛出带业务错误码的异常，默认 BAD_REQUEST */
+function bizError(message, code = ERROR_CODES.BAD_REQUEST) {
   const err = new Error(message)
   err.code = code
   throw err
+}
+
+/** 提取当前请求的 db / tenant / operator 上下文 */
+function getRequestScope(app, ctx) {
+  return {
+    db: ensureDb(app),
+    tenantId: getTenantId(ctx),
+    operatorId: getOperatorId(ctx),
+  }
 }
 
 /** 委托 audit 服务写入操作留痕 */
@@ -69,20 +79,20 @@ async function syncUserRoles(trx, tenantId, userId, roleIds = []) {
 async function assertDeptInTenant(db, tenantId, deptId) {
   if (!deptId) return
   const dept = await db('departments').where({ tenant_id: tenantId, dept_id: deptId }).first()
-  if (!dept) bizError('部门不存在', 40400)
+  if (!dept) bizError('部门不存在', ERROR_CODES.NOT_FOUND)
 }
 
 /** 断言记录存在且 tenant_id 匹配，用于防跨租户读写 */
 async function assertRowInTenant(db, table, tenantId, idField, id, label = '记录') {
   if (!id) return null
   const row = await db(table).where({ tenant_id: tenantId, [idField]: id }).first()
-  if (!row) bizError(`${label}不存在`, 40400)
+  if (!row) bizError(`${label}不存在`, ERROR_CODES.NOT_FOUND)
   return row
 }
 
 /** 查询构建器附加 deleted_at IS NULL 条件（软删除过滤） */
-function activeOnly(qb) {
-  return qb.whereNull('deleted_at')
+function activeOnly(qb, column = 'deleted_at') {
+  return qb.whereNull(column)
 }
 
 module.exports = {
@@ -90,6 +100,7 @@ module.exports = {
   ensureDb,
   getTenantId,
   getOperatorId,
+  getRequestScope,
   bizError,
   audit,
   syncUserRoles,

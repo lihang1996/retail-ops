@@ -35,8 +35,17 @@ async function run() {
     } else {
       console.log('[init-db] migrate already up to date')
     }
-    await db.seed.run()
-    console.log('[init-db] seed done')
+
+    const seedOnStart = process.env.SEED_ON_START === 'true'
+    const tenantCount = await db('tenants').count('tenant_id as cnt').first()
+    const shouldSeed = seedOnStart || Number(tenantCount?.cnt || 0) === 0
+
+    if (shouldSeed) {
+      await db.seed.run()
+      console.log('[init-db] seed done')
+    } else {
+      console.log('[init-db] skip seed (set SEED_ON_START=true to force)')
+    }
   } catch (err) {
     console.error('[init-db] failed:', err.message)
     process.exit(1)

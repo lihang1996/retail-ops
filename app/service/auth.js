@@ -7,6 +7,10 @@
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const idGen = require('../common/id')
+const {
+  getPermissionSnapshotVersion,
+  getUserPermissionRows,
+} = require('../common/permission-resolver')
 
 const MAX_LOGIN_FAIL = 5
 
@@ -57,8 +61,15 @@ module.exports = (app) => {
       const sessionId = idGen.next('sess')
       const jti = idGen.next('jti')
       const expiresIn = app.config.jwt?.expiresIn || '7d'
+      const permissionVersion = await getPermissionSnapshotVersion(db, user.user_id, member.tenant_id)
       const token = jwt.sign(
-        { user_id: user.user_id, tenant_id: member.tenant_id, session_id: sessionId, jti },
+        {
+          user_id: user.user_id,
+          tenant_id: member.tenant_id,
+          session_id: sessionId,
+          jti,
+          permission_version: permissionVersion,
+        },
         app.config.jwt.secret,
         { expiresIn }
       )
@@ -105,6 +116,7 @@ module.exports = (app) => {
           tenantName: tenant.tenant_name,
           status: tenant.status,
         },
+        permissionVersion,
         defaultEntry: '/view/project-list',
       }
     }
@@ -135,21 +147,22 @@ module.exports = (app) => {
 
     /** 聚合用户在当前租户下的菜单与操作权限码，供前端渲染导航与按钮 */
     async getPermissionSnapshot({ userId, tenantId }) {
-      const rows = await app.db('permissions as p')
-        .join('role_permissions as rp', 'p.permission_id', 'rp.permission_id')
-        .join('user_roles as ur', 'rp.role_id', 'ur.role_id')
-        .join('roles as r', 'ur.role_id', 'r.role_id')
-        .where('ur.user_id', userId)
-        .andWhere('r.tenant_id', tenantId)
-        .select('p.permission_code', 'p.permission_type')
+      const rows = await getUserPermissionRows(app.db, userId, tenantId)
+      const permissionVersion = await getPermissionSnapshotVersion(app.db, userId, tenantId)
 
-      const menus = []
-      const actions = []
+      const menus = new Set()
+      const actions = new Set()
       rows.forEach((r) => {
-        if (r.permission_type === 'menu') menus.push(r.permission_code)
-        else if (r.permission_type === 'action') actions.push(r.permission_code)
+        if (r.permission_type === 'menu') menus.add(r.permission_code)
+        else if (r.permission_type === 'action') actions.add(r.permission_code)
       })
-      return { menus, actions, fields: {}, dataScope: {} }
+      return {
+        menus: Array.from(menus),
+        actions: Array.from(actions),
+        fields: {},
+        dataScope: {},
+        permissionVersion,
+      }
     }
 
     async _logLogin(payload) {

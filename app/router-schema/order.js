@@ -9,6 +9,8 @@ module.exports = {
           order_no: { type: 'string' },
           created_from: { type: 'string' },
           created_to: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
         },
       },
     },
@@ -31,11 +33,17 @@ module.exports = {
       },
     },
   },
-  '/api/proj/order/mock_pay': {
+  '/api/proj/order/import': {
+    post: {},
+  },
+  '/api/proj/order/pay': {
     post: {
       body: {
         type: 'object',
-        properties: { order_id: { type: 'string' } },
+        properties: {
+          order_id: { type: 'string' },
+          pay_method: { type: 'string' },
+        },
         required: ['order_id'],
       },
     },

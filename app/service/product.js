@@ -14,6 +14,17 @@ const {
   assertRowInTenant,
   activeOnly,
 } = require('../common/org-helper')
+const { paginateQuery, hasFilterValue } = require('../common/pagination')
+const { applyFilters } = require('../common/apply-filters')
+
+const PRODUCT_LIST_FILTERS = [
+  { key: 'status', column: 'p.status' },
+  { key: 'product_name', column: 'p.product_name', op: 'like', transform: (value) => value.trim() },
+  { key: 'category_id', column: 'p.category_id' },
+  { key: 'category_name', column: 'c.category_name', op: 'like', transform: (value) => value.trim() },
+  { key: 'brand_id', column: 'p.brand_id' },
+  { key: 'brand_name', column: 'b.brand_name', op: 'like', transform: (value) => value.trim() },
+]
 
 const ON_SALE_STATUSES = ['on_sale']
 
@@ -40,7 +51,7 @@ module.exports = (app) => {
         .where('p.tenant_id', tenantId)
     }
 
-    /** 列出商品及类目/品牌，附带 SKU 数量 */
+    /** 列出商品及类目/品牌，附带 SKU 数量（SQL 分页，仅 enrich 当前页） */
     async list(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
@@ -49,30 +60,128 @@ module.exports = (app) => {
         'c.category_name',
         'b.brand_name'
       )
-      if (query.status) qb = qb.andWhere('p.status', query.status)
-      if (query.product_name) qb = qb.andWhere('p.product_name', 'like', `%${query.product_name}%`)
-      if (query.category_id) qb = qb.andWhere('p.category_id', query.category_id)
+      qb = applyFilters(qb, query, PRODUCT_LIST_FILTERS)
+      if (hasFilterValue(query.keyword)) {
+        const keyword = query.keyword.trim()
+        qb = qb.andWhere(function matchKeyword() {
+          this.where('p.product_name', 'like', `%${keyword}%`)
+            .orWhere('c.category_name', 'like', `%${keyword}%`)
+            .orWhere('b.brand_name', 'like', `%${keyword}%`)
+        })
+      }
+      if (hasFilterValue(query.stock_risk)) {
+        const stockAgg = db('product_skus as sku')
+          .leftJoin('stocks as s', function joinStock() {
+            this.on('s.sku_id', 'sku.sku_id').andOn('s.tenant_id', 'sku.tenant_id')
+          })
+          .where('sku.tenant_id', tenantId)
+          .whereNull('sku.deleted_at')
+          .groupBy('sku.product_id')
+          .select(
+            'sku.product_id',
+            db.raw('COALESCE(SUM(s.available_qty), 0) as stock_total'),
+            db.raw('SUM(CASE WHEN s.available_qty IS NOT NULL AND s.available_qty > 0 AND s.available_qty <= COALESCE(s.warning_qty, 0) THEN 1 ELSE 0 END) as risk_sku_count')
+          )
+          .as('sa')
+        qb = qb.leftJoin(stockAgg, 'sa.product_id', 'p.product_id')
+        const risk = query.stock_risk
+        if (risk === 'none') qb = qb.andWhere('sa.stock_total', '<=', 0)
+        if (risk === 'has_risk') qb = qb.andWhere('sa.stock_total', '>', 0).andWhere('sa.risk_sku_count', '>', 0)
+        if (risk === 'normal') qb = qb.andWhere('sa.stock_total', '>', 0).andWhere('sa.risk_sku_count', '<=', 0)
+      }
 
-      const list = await qb.orderBy('p.created_at', 'desc')
-      const skuCounts = await db('product_skus')
-        .where({ tenant_id: tenantId })
-        .whereNull('deleted_at')
-        .groupBy('product_id')
-        .select('product_id')
-        .count('* as sku_count')
+      if (hasFilterValue(query.approval_status)) {
+        if (query.approval_status === 'pending') {
+          qb = qb.andWhere(function matchPendingApproval() {
+            this.where('p.status', 'pending_review').orWhereExists(function existsPending() {
+              this.select(db.raw('1'))
+                .from('approvals as appr')
+                .whereRaw('appr.ref_id = p.product_id')
+                .andWhere({
+                  'appr.tenant_id': tenantId,
+                  'appr.ref_type': 'product_on_sale',
+                  'appr.status': 'pending',
+                })
+            })
+          })
+        } else if (query.approval_status === 'none') {
+          qb = qb.andWhere('p.status', '!=', 'pending_review')
+            .whereNotExists(function notPending() {
+              this.select(db.raw('1'))
+                .from('approvals as appr')
+                .whereRaw('appr.ref_id = p.product_id')
+                .andWhere({
+                  'appr.tenant_id': tenantId,
+                  'appr.ref_type': 'product_on_sale',
+                  'appr.status': 'pending',
+                })
+            })
+        }
+      }
+
+      const result = await paginateQuery(qb.orderBy('p.created_at', 'desc'), query, { countColumn: 'p.product_id' })
+      const productIds = result.list.map((item) => item.product_id)
+
+      const skuCounts = productIds.length
+        ? await db('product_skus')
+          .where({ tenant_id: tenantId })
+          .whereIn('product_id', productIds)
+          .whereNull('deleted_at')
+          .groupBy('product_id')
+          .select('product_id')
+          .count('* as sku_count')
+        : []
 
       const countMap = {}
       skuCounts.forEach((row) => {
         countMap[row.product_id] = Number(row.sku_count)
       })
 
-      return {
-        list: list.map((item) => ({
+      const stockMap = {}
+      if (productIds.length) {
+        const stockRows = await db('product_skus as sku')
+          .leftJoin('stocks as s', function joinStock() {
+            this.on('s.sku_id', 'sku.sku_id').andOn('s.tenant_id', 'sku.tenant_id')
+          })
+          .where('sku.tenant_id', tenantId)
+          .whereIn('sku.product_id', productIds)
+          .whereNull('sku.deleted_at')
+          .groupBy('sku.product_id')
+          .select('sku.product_id')
+          .sum('s.available_qty as stock_total')
+          .select(db.raw('SUM(CASE WHEN s.available_qty IS NOT NULL AND s.available_qty > 0 AND s.available_qty <= COALESCE(s.warning_qty, 0) THEN 1 ELSE 0 END) as risk_sku_count'))
+
+        stockRows.forEach((row) => {
+          stockMap[row.product_id] = {
+            stock_total: parseInt(row.stock_total, 10) || 0,
+            risk_sku_count: parseInt(row.risk_sku_count, 10) || 0,
+          }
+        })
+      }
+
+      const approvalMap = new Map()
+      if (productIds.length) {
+        const approvals = await db('approvals')
+          .where({ tenant_id: tenantId, ref_type: 'product_on_sale', status: 'pending' })
+          .whereIn('ref_id', productIds)
+        approvals.forEach((row) => approvalMap.set(row.ref_id, row))
+      }
+
+      const list = result.list.map((item) => {
+        const stock = stockMap[item.product_id] || { stock_total: 0, risk_sku_count: 0 }
+        const hasApproval = approvalMap.has(item.product_id)
+        let stockRisk = 'none'
+        if (stock.stock_total > 0) stockRisk = stock.risk_sku_count > 0 ? 'has_risk' : 'normal'
+        return {
           ...item,
           sku_count: countMap[item.product_id] || 0,
-        })),
-        total: list.length,
-      }
+          stock_total: stock.stock_total,
+          stock_risk: stockRisk,
+          approval_status: hasApproval ? 'pending' : (item.status === 'pending_review' ? 'pending' : 'none'),
+        }
+      })
+
+      return { list, total: result.total }
     }
 
     /** 获取商品详情及 SKU 列表 */
@@ -212,16 +321,34 @@ module.exports = (app) => {
     async listSkus(ctx, query = {}) {
       const db = ensureDb(app)
       const tenantId = getTenantId(ctx)
-      const { product_id: productId } = query
-      if (!productId) bizError('product_id 不能为空')
-      const product = await activeOnly(db('products'))
-        .where({ tenant_id: tenantId, product_id: productId })
-        .first()
-      if (!product) bizError('商品不存在', 40400)
+      const { product_id: productId, keyword, limit = 200 } = query
 
-      const list = await activeOnly(db('product_skus'))
-        .where({ tenant_id: tenantId, product_id: productId })
-        .orderBy('created_at', 'asc')
+      let qb = activeOnly(db('product_skus as sku'), 'sku.deleted_at')
+        .leftJoin('products as p', function joinProduct() {
+          this.on('p.product_id', 'sku.product_id').andOn('p.tenant_id', 'sku.tenant_id')
+        })
+        .where('sku.tenant_id', tenantId)
+        .select('sku.*', 'p.product_name')
+
+      if (productId) {
+        const product = await activeOnly(db('products'))
+          .where({ tenant_id: tenantId, product_id: productId })
+          .first()
+        if (!product) bizError('商品不存在', 40400)
+        qb = qb.andWhere('sku.product_id', productId)
+      }
+
+      if (hasFilterValue(keyword)) {
+        const like = `%${keyword.trim()}%`
+        qb = qb.andWhere(function filterKeyword() {
+          this.where('sku.sku_code', 'like', like)
+            .orWhere('sku.sku_id', 'like', like)
+            .orWhere('p.product_name', 'like', like)
+        })
+      }
+
+      const cap = Math.min(Math.max(parseInt(limit, 10) || 200, 1), 500)
+      const list = await qb.orderBy('sku.created_at', 'desc').limit(cap)
       return { list, total: list.length }
     }
 

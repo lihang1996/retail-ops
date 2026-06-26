@@ -21,9 +21,9 @@ RUN npm install --omit=dev
 RUN NODE_ENV=prod node build.js
 
 ENV NODE_ENV=production
-ENV PORT=8080
+ENV PORT=8090
 
-EXPOSE 8080
+EXPOSE 8090
 
 WORKDIR /app/retail-ops
 ENTRYPOINT ["/sbin/tini", "--"]

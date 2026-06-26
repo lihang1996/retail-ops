@@ -6,6 +6,8 @@ module.exports = {
         properties: {
           status: { type: 'string' },
           order_id: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
         },
       },
     },

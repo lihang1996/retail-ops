@@ -6,15 +6,33 @@
         <div class="login-subtitle">智能零售运营中台</div>
       </template>
 
-      <el-form label-position="top" @submit.prevent="onSubmit">
+      <el-alert
+        v-if="enableDemoLogin"
+        title="本地演示账号 · 点击后填入账号"
+        type="info"
+        :closable="false"
+        show-icon
+        class="demo-alert"
+      />
+
+      <el-table v-if="enableDemoLogin" :data="demoAccounts" size="small" class="demo-table" @row-click="fillDemo">
+        <el-table-column prop="label" label="角色" width="88" />
+        <el-table-column prop="account" label="账号" min-width="160" />
+        <el-table-column label="操作" width="72" align="center">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click.stop="fillDemo(row)">填入</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-form label-position="top" class="login-form" @submit.prevent="onSubmit">
         <el-form-item label="账号">
-          <el-input v-model="account" placeholder="admin@retail.demo" clearable />
+          <el-input v-model="account" clearable />
         </el-form-item>
         <el-form-item label="密码">
           <el-input
             v-model="password"
             type="password"
-            placeholder="demo123"
             show-password
             @keyup.enter="onSubmit"
           />
@@ -31,29 +49,22 @@
           登录
         </el-button>
       </el-form>
-
-      <div class="demo-accounts">
-        <span class="tip">演示账号（密码均为 demo123）：</span>
-        <el-button
-          v-for="item in demoAccounts"
-          :key="item.account"
-          size="small"
-          link
-          type="primary"
-          @click="fillDemo(item)"
-        >
-          {{ item.label }}
-        </el-button>
-      </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { setToken, getToken } from '$retailAuth'
+import { getToken, login } from '$retailAuth'
 
-const account = ref('')
+const DEFAULT_ACCOUNT = 'admin@retail.demo'
+const enableDemoLogin = (() => {
+  const host = window.location.hostname
+  const demoQuery = new URLSearchParams(window.location.search).get('demo_login')
+  return demoQuery === '1' || ['localhost', '127.0.0.1', '0.0.0.0'].includes(host)
+})()
+
+const account = ref(enableDemoLogin ? DEFAULT_ACCOUNT : '')
 const password = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
@@ -61,7 +72,9 @@ const errorMsg = ref('')
 const demoAccounts = [
   { label: '管理员', account: 'admin@retail.demo' },
   { label: '运营', account: 'ops@retail.demo' },
-  { label: '仓库', account: 'warehouse@retail.demo' },
+  { label: '仓库主管', account: 'warehouse@retail.demo' },
+  { label: '财务', account: 'finance@retail.demo' },
+  { label: '分析师', account: 'analyst@retail.demo' },
 ]
 
 onMounted(() => {
@@ -70,9 +83,9 @@ onMounted(() => {
   }
 })
 
-const fillDemo = (item) => {
-  account.value = item.account
-  password.value = 'demo123'
+const fillDemo = (row) => {
+  account.value = row.account
+  password.value = ''
 }
 
 const onSubmit = async () => {
@@ -83,20 +96,10 @@ const onSubmit = async () => {
   loading.value = true
   errorMsg.value = ''
   try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account: account.value, password: password.value }),
-    })
-    const data = await res.json()
-    if (!data.success) {
-      errorMsg.value = data.message || '登录失败'
-      return
-    }
-    setToken(data.data.token)
-    window.location.href = data.data.defaultEntry || '/view/project-list'
-  } catch {
-    errorMsg.value = '网络异常，请稍后重试'
+    const payload = await login(account.value, password.value)
+    window.location.href = payload.defaultEntry || '/view/project-list'
+  } catch (error) {
+    errorMsg.value = error?.message || '网络异常，请稍后重试'
   } finally {
     loading.value = false
   }
@@ -109,34 +112,67 @@ const onSubmit = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  padding: 24px;
+  background:
+    radial-gradient(ellipse 70% 55% at 18% 12%, rgba(37, 99, 235, 0.13), transparent),
+    radial-gradient(ellipse 55% 50% at 88% 78%, rgba(14, 165, 233, 0.11), transparent),
+    linear-gradient(160deg, #f8fbff 0%, #eef5ff 48%, #f7f9fc 100%);
 }
+
 .login-card {
-  width: 400px;
+  width: 100%;
+  max-width: 440px;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 20px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.13);
+
+  :deep(.el-card__header) {
+    padding: 24px 24px 16px;
+    border-bottom: 1px solid var(--app-border, rgba(203, 213, 225, 0.7));
+  }
+
+  :deep(.el-card__body) {
+    padding: 20px 24px 24px;
+  }
 }
+
 .login-title {
-  font-size: 22px;
-  font-weight: bold;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--el-text-color-primary, #0f172a);
 }
+
 .login-subtitle {
   font-size: 13px;
-  color: #909399;
+  color: var(--app-text-muted, #64748b);
+  margin-top: 6px;
+}
+
+.demo-alert {
+  margin-bottom: 14px;
+}
+
+.demo-table {
+  margin-bottom: 16px;
+  cursor: pointer;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.login-form {
   margin-top: 4px;
 }
+
 .login-btn {
   width: 100%;
-  margin-top: 8px;
+  margin-top: 12px;
+  height: 40px;
+  font-weight: 600;
 }
+
 .login-error {
   margin-bottom: 12px;
-}
-.demo-accounts {
-  margin-top: 16px;
-  font-size: 12px;
-  color: #909399;
-  .tip {
-    display: block;
-    margin-bottom: 6px;
-  }
 }
 </style>

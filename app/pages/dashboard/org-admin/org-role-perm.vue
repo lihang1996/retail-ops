@@ -54,7 +54,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import $curl from '$elpisCommon/curl.js'
+import { orgApi } from '../api/org-api.js'
+import { unwrapData } from '../api/http.js'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -73,35 +74,22 @@ const groupLabel = (group) => ({
 }[group] || group)
 
 async function loadRoles() {
-  const res = await $curl({
-    method: 'get',
-    url: '/api/proj/org/role/list',
-  })
-  if (res?.success) {
-    roles.value = res.data || []
-  }
+  const res = await orgApi.roleList()
+  roles.value = unwrapData(res, []) || []
 }
 
 async function loadPermissionTree() {
-  const res = await $curl({
-    method: 'get',
-    url: '/api/proj/permission/tree',
-  })
-  if (res?.success) {
-    permissionTree.value = res.data || {}
-  }
+  const res = await orgApi.permissionTree()
+  permissionTree.value = unwrapData(res, {}) || {}
 }
 
 async function loadRolePermissions() {
   if (!selectedRoleId.value) return
   loading.value = true
   try {
-    const res = await $curl({
-      method: 'get',
-      url: '/api/proj/org/role_permissions',
-      query: { role_id: selectedRoleId.value },
-    })
-    checkedIds.value = res?.data?.permissionIds || []
+    const res = await orgApi.rolePermissions({ role_id: selectedRoleId.value })
+    const data = unwrapData(res)
+    checkedIds.value = (data && data.permissionIds) || []
   } finally {
     loading.value = false
   }
@@ -116,15 +104,11 @@ async function save() {
   saving.value = true
   tipMsg.value = ''
   try {
-    const res = await $curl({
-      method: 'post',
-      url: '/api/proj/org/role_permissions',
-      data: {
-        role_id: selectedRoleId.value,
-        permission_ids: checkedIds.value,
-      },
+    const res = await orgApi.saveRolePermissions({
+      role_id: selectedRoleId.value,
+      permission_ids: checkedIds.value,
     })
-    if (res?.success) {
+    if (res && res.success) {
       tipType.value = 'success'
       tipMsg.value = '权限已保存'
     }
@@ -145,7 +129,7 @@ onMounted(async () => {
 
 <style lang="less" scoped>
 .org-role-perm {
-  padding: 16px;
+  padding: var(--app-page-padding) 24px 32px;
 }
 .header-row {
   display: flex;
@@ -170,7 +154,7 @@ onMounted(async () => {
 }
 .perm-code {
   margin-left: 8px;
-  color: #909399;
+  color: var(--app-text-muted);
   font-size: 12px;
 }
 .tip-alert {

@@ -8,6 +8,7 @@ const {
   ensureDb,
   getTenantId,
   getOperatorId,
+  getRequestScope,
   bizError,
   audit,
   idGen,
@@ -20,13 +21,17 @@ const {
   assertOrderStatus,
   suggestLocationForSku,
   resolveWarehouseForOrder,
-  applyOrderAllocation,
 } = require('../common/order-helper')
+const { outboundStock } = require('../common/stock-helper')
+const { paginateQuery } = require('../common/pagination')
+const { applyFilters } = require('../common/apply-filters')
 
-function generateShipmentNo() {
-  return `SHP${Date.now()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`
-}
-
+const SHIPMENT_LIST_FILTERS = [
+  { key: 'status', column: 'sh.status' },
+  { key: 'order_id', column: 'sh.order_id' },
+]
+const { generateShipmentNo } = require('../common/business-no')
+const { ERROR_CODES } = require('../common/error-codes')
 module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
 
@@ -42,11 +47,9 @@ module.exports = (app) => {
         .where('sh.tenant_id', tenantId)
         .select('sh.*', 'o.order_no', 'w.warehouse_name')
 
-      if (query.status) qb = qb.andWhere('sh.status', query.status)
-      if (query.order_id) qb = qb.andWhere('sh.order_id', query.order_id)
+      qb = applyFilters(qb, query, SHIPMENT_LIST_FILTERS)
 
-      const list = await qb.orderBy('sh.created_at', 'desc').limit(200)
-      return { list, total: list.length }
+      return paginateQuery(qb.orderBy('sh.created_at', 'desc'), query, { countColumn: 'sh.shipment_id' })
     }
 
     /** 获取发货单详情含明细、拣货任务、物流信息 */
@@ -73,51 +76,72 @@ module.exports = (app) => {
 
     /** 从已分仓订单生成发货单，自动建议拣货库位 */
     async createFromOrder(ctx, body = {}) {
-      const db = ensureDb(app)
-      const tenantId = getTenantId(ctx)
-      const operatorId = getOperatorId(ctx)
+      const { db, tenantId, operatorId } = getRequestScope(app, ctx)
       const { order_id: orderId } = body
       if (!orderId) bizError('order_id 不能为空')
 
-      const order = await assertRowInTenant(db, 'orders', tenantId, 'order_id', orderId, '订单')
-      if (order.status === ORDER_STATUS.PAID) {
-        const items = await db('order_items').where({ tenant_id: tenantId, order_id: orderId })
-        const { warehouse, reason } = await resolveWarehouseForOrder(db, tenantId, order, items)
-        await db.transaction(async (trx) => {
-          await applyOrderAllocation(trx, {
+      let result
+
+      await db.transaction(async (trx) => {
+        let order = await trx('orders')
+          .where({ tenant_id: tenantId, order_id: orderId })
+          .forUpdate()
+          .first()
+        if (!order) bizError('订单不存在', ERROR_CODES.NOT_FOUND)
+
+        if (order.status === ORDER_STATUS.PAID) {
+          const items = await trx('order_items').where({ tenant_id: tenantId, order_id: orderId })
+          const { warehouse, reason } = await resolveWarehouseForOrder(trx, tenantId, order, items)
+          const allocated = await trx('orders')
+            .where({ tenant_id: tenantId, order_id: orderId, status: ORDER_STATUS.PAID })
+            .update({
+              status: ORDER_STATUS.ALLOCATED,
+              warehouse_id: warehouse.warehouse_id,
+            })
+          if (allocated !== 1) bizError('订单状态已变更，无法分仓', ERROR_CODES.CONFLICT)
+          await writeOrderStatusLog(trx, {
             tenantId,
             orderId,
             fromStatus: ORDER_STATUS.PAID,
-            warehouse,
-            reason,
+            toStatus: ORDER_STATUS.ALLOCATED,
+            remark: reason,
             operatorId,
           })
-        })
-        order.status = ORDER_STATUS.ALLOCATED
-        order.warehouse_id = warehouse.warehouse_id
-      }
-      assertOrderStatus(order, [ORDER_STATUS.ALLOCATED], '生成发货单')
-      if (!order.warehouse_id) bizError('订单未分仓', 40900)
+          order = {
+            ...order,
+            status: ORDER_STATUS.ALLOCATED,
+            warehouse_id: warehouse.warehouse_id,
+          }
+        }
 
-      const existing = await db('shipments')
-        .where({ tenant_id: tenantId, order_id: orderId })
-        .whereNot('status', SHIPMENT_STATUS.SHIPPED)
-        .first()
-      if (existing) bizError('该订单已有未完成发货单', 40900)
+        assertOrderStatus(order, [ORDER_STATUS.ALLOCATED], '生成发货单')
+        if (!order.warehouse_id) bizError('订单未分仓', ERROR_CODES.CONFLICT)
 
-      const orderItems = await db('order_items').where({ tenant_id: tenantId, order_id: orderId })
-      const shipmentId = idGen.next('ship')
-      const shipmentNo = generateShipmentNo()
+        const existing = await trx('shipments')
+          .where({ tenant_id: tenantId, order_id: orderId })
+          .whereNot('status', SHIPMENT_STATUS.SHIPPED)
+          .first()
+        if (existing) bizError('该订单已有未完成发货单', ERROR_CODES.CONFLICT)
 
-      await db.transaction(async (trx) => {
-        await trx('shipments').insert({
-          shipment_id: shipmentId,
-          tenant_id: tenantId,
-          order_id: orderId,
-          warehouse_id: order.warehouse_id,
-          shipment_no: shipmentNo,
-          status: SHIPMENT_STATUS.CREATED,
-        })
+        const orderItems = await trx('order_items').where({ tenant_id: tenantId, order_id: orderId })
+        const shipmentId = idGen.next('ship')
+        const shipmentNo = generateShipmentNo()
+
+        try {
+          await trx('shipments').insert({
+            shipment_id: shipmentId,
+            tenant_id: tenantId,
+            order_id: orderId,
+            warehouse_id: order.warehouse_id,
+            shipment_no: shipmentNo,
+            status: SHIPMENT_STATUS.CREATED,
+          })
+        } catch (e) {
+          if (e.code === 'ER_DUP_ENTRY' || e.errno === 1062) {
+            bizError('该订单已存在发货单', ERROR_CODES.CONFLICT)
+          }
+          throw e
+        }
 
         const shipmentItems = []
         for (const item of orderItems) {
@@ -125,7 +149,7 @@ module.exports = (app) => {
             trx,
             tenantId,
             order.warehouse_id,
-            item.sku_id
+            item.sku_id,
           )
           shipmentItems.push({
             item_id: idGen.next('sitem'),
@@ -137,16 +161,18 @@ module.exports = (app) => {
           })
         }
         await trx('shipment_items').insert(shipmentItems)
+
+        result = { shipmentId, shipmentNo }
       })
 
       await audit(app, ctx, {
         actionCode: 'shipment:create',
         objectType: 'shipment',
-        objectId: shipmentId,
-        detail: { orderId, shipmentNo },
+        objectId: result.shipmentId,
+        detail: { orderId, shipmentNo: result.shipmentNo },
       })
 
-      return { shipmentId, shipmentNo }
+      return result
     }
 
     /** 开始拣货：状态 created → picking，创建 picking_task */
@@ -157,22 +183,33 @@ module.exports = (app) => {
       const { shipment_id: shipmentId } = body
       if (!shipmentId) bizError('shipment_id 不能为空')
 
-      const shipment = await assertRowInTenant(db, 'shipments', tenantId, 'shipment_id', shipmentId, '发货单')
-      if (shipment.status !== SHIPMENT_STATUS.CREATED) {
-        bizError(`发货单状态为 ${shipment.status}，无法开始拣货`, 40900)
-      }
-
       const taskId = idGen.next('pick')
+
       await db.transaction(async (trx) => {
-        await trx('shipments').where({ shipment_id: shipmentId }).update({ status: SHIPMENT_STATUS.PICKING })
-        await trx('picking_tasks').insert({
-          task_id: taskId,
-          tenant_id: tenantId,
-          shipment_id: shipmentId,
-          status: 'in_progress',
-          picker_id: operatorId,
-          started_at: trx.fn.now(),
-        })
+        const affected = await trx('shipments')
+          .where({
+            tenant_id: tenantId,
+            shipment_id: shipmentId,
+            status: SHIPMENT_STATUS.CREATED,
+          })
+          .update({ status: SHIPMENT_STATUS.PICKING })
+        if (affected !== 1) bizError('发货单状态已变更，无法开始拣货', ERROR_CODES.CONFLICT)
+
+        try {
+          await trx('picking_tasks').insert({
+            task_id: taskId,
+            tenant_id: tenantId,
+            shipment_id: shipmentId,
+            status: 'in_progress',
+            picker_id: operatorId,
+            started_at: trx.fn.now(),
+          })
+        } catch (e) {
+          if (e.code === 'ER_DUP_ENTRY' || e.errno === 1062) {
+            bizError('拣货任务已存在', ERROR_CODES.CONFLICT)
+          }
+          throw e
+        }
       })
 
       return { shipmentId, taskId }
@@ -185,25 +222,27 @@ module.exports = (app) => {
       const { shipment_id: shipmentId } = body
       if (!shipmentId) bizError('shipment_id 不能为空')
 
-      const shipment = await assertRowInTenant(db, 'shipments', tenantId, 'shipment_id', shipmentId, '发货单')
-      if (shipment.status !== SHIPMENT_STATUS.PICKING) {
-        bizError(`发货单状态为 ${shipment.status}，无法确认拣货`, 40900)
-      }
-
-      const items = await db('shipment_items').where({ tenant_id: tenantId, shipment_id: shipmentId })
-
       await db.transaction(async (trx) => {
+        const affected = await trx('shipments')
+          .where({
+            tenant_id: tenantId,
+            shipment_id: shipmentId,
+            status: SHIPMENT_STATUS.PICKING,
+          })
+          .update({ status: SHIPMENT_STATUS.PICKED })
+        if (affected !== 1) bizError('发货单状态已变更，无法确认拣货', ERROR_CODES.CONFLICT)
+
+        const items = await trx('shipment_items').where({ tenant_id: tenantId, shipment_id: shipmentId })
         for (const item of items) {
-          const pickedLocationId = item.suggested_location_id
           await trx('shipment_items').where({ item_id: item.item_id }).update({
-            picked_location_id: pickedLocationId,
+            picked_location_id: item.suggested_location_id,
           })
         }
 
-        await trx('shipments').where({ shipment_id: shipmentId }).update({ status: SHIPMENT_STATUS.PICKED })
-        await trx('picking_tasks')
+        const taskUpdated = await trx('picking_tasks')
           .where({ tenant_id: tenantId, shipment_id: shipmentId, status: 'in_progress' })
           .update({ status: 'done', finished_at: trx.fn.now() })
+        if (taskUpdated !== 1) bizError('拣货任务状态已变更', ERROR_CODES.CONFLICT)
       })
 
       return { shipmentId }
@@ -217,39 +256,66 @@ module.exports = (app) => {
       const { shipment_id: shipmentId, carrier, tracking_no: trackingNo } = body
       if (!shipmentId) bizError('shipment_id 不能为空')
 
-      const shipment = await assertRowInTenant(db, 'shipments', tenantId, 'shipment_id', shipmentId, '发货单')
-      if (shipment.status !== SHIPMENT_STATUS.PICKED) {
-        bizError(`发货单状态为 ${shipment.status}，无法出库发货`, 40900)
-      }
-
-      const shipmentItems = await db('shipment_items').where({ tenant_id: tenantId, shipment_id: shipmentId })
-      const orderItems = await db('order_items').where({ tenant_id: tenantId, order_id: shipment.order_id })
-      const lockBySku = new Map(orderItems.map((i) => [i.sku_id, i.lock_id]))
-
-      for (const item of shipmentItems) {
-        await app.service.stock.outbound(ctx, {
-          warehouse_id: shipment.warehouse_id,
-          sku_id: item.sku_id,
-          qty: item.qty,
-          lock_id: lockBySku.get(item.sku_id),
-          ref_type: 'shipment',
-          ref_id: shipmentId,
-        })
-      }
+      let orderId
 
       await db.transaction(async (trx) => {
-        await trx('shipments').where({ shipment_id: shipmentId }).update({ status: SHIPMENT_STATUS.SHIPPED })
-        await trx('logistics').insert({
-          logistics_id: idGen.next('logi'),
-          tenant_id: tenantId,
-          shipment_id: shipmentId,
-          carrier: carrier || 'DEMO_EXPRESS',
-          tracking_no: trackingNo || `TRK${Date.now()}`,
-          shipped_at: trx.fn.now(),
-        })
+        const shipment = await trx('shipments')
+          .where({ tenant_id: tenantId, shipment_id: shipmentId })
+          .forUpdate()
+          .first()
+        if (!shipment) bizError('发货单不存在', ERROR_CODES.NOT_FOUND)
+        if (shipment.status !== SHIPMENT_STATUS.PICKED) {
+          bizError(`发货单状态为 ${shipment.status}，无法出库发货`, ERROR_CODES.CONFLICT)
+        }
+
+        const shipped = await trx('shipments')
+          .where({
+            tenant_id: tenantId,
+            shipment_id: shipmentId,
+            status: SHIPMENT_STATUS.PICKED,
+          })
+          .update({ status: SHIPMENT_STATUS.SHIPPED })
+        if (shipped !== 1) bizError('发货单状态已变更，无法出库发货', ERROR_CODES.CONFLICT)
+
+        const shipmentItems = await trx('shipment_items').where({ tenant_id: tenantId, shipment_id: shipmentId })
+        const orderItems = await trx('order_items').where({ tenant_id: tenantId, order_id: shipment.order_id })
+        const lockBySku = new Map(orderItems.map((i) => [i.sku_id, i.lock_id]))
+
+        for (const item of shipmentItems) {
+          await outboundStock(trx, {
+            tenantId,
+            operatorId,
+            warehouseId: shipment.warehouse_id,
+            skuId: item.sku_id,
+            qty: item.qty,
+            lockId: lockBySku.get(item.sku_id),
+            refType: 'shipment',
+            refId: shipmentId,
+          })
+        }
+
+        try {
+          await trx('logistics').insert({
+            logistics_id: idGen.next('logi'),
+            tenant_id: tenantId,
+            shipment_id: shipmentId,
+            carrier: carrier || 'STANDARD_EXPRESS',
+            tracking_no: trackingNo || `TRK${Date.now()}`,
+            shipped_at: trx.fn.now(),
+          })
+        } catch (e) {
+          if (e.code === 'ER_DUP_ENTRY' || e.errno === 1062) {
+            bizError('物流记录已存在', ERROR_CODES.CONFLICT)
+          }
+          throw e
+        }
 
         const order = await trx('orders').where({ order_id: shipment.order_id }).first()
-        await trx('orders').where({ order_id: shipment.order_id }).update({ status: ORDER_STATUS.SHIPPED })
+        const orderUpdated = await trx('orders')
+          .where({ tenant_id: tenantId, order_id: shipment.order_id, status: order.status })
+          .update({ status: ORDER_STATUS.SHIPPED })
+        if (orderUpdated !== 1) bizError('订单状态已变更，无法完成发货', ERROR_CODES.CONFLICT)
+
         await writeOrderStatusLog(trx, {
           tenantId,
           orderId: shipment.order_id,
@@ -258,16 +324,18 @@ module.exports = (app) => {
           remark: `发货单 ${shipment.shipment_no} 已出库`,
           operatorId,
         })
+
+        orderId = shipment.order_id
       })
 
       await audit(app, ctx, {
         actionCode: 'shipment:ship',
         objectType: 'shipment',
         objectId: shipmentId,
-        detail: { orderId: shipment.order_id },
+        detail: { orderId },
       })
 
-      return { shipmentId, orderId: shipment.order_id }
+      return { shipmentId, orderId }
     }
 
     /** 生成拣货路径点，按库位坐标 x/z 排序 */

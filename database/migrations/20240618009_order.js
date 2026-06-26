@@ -78,7 +78,7 @@ exports.up = async (knex) => {
     t.string('tenant_id', 64).notNullable().index()
     t.string('order_id', 64).notNullable().index()
     t.decimal('amount', 12, 2).notNullable()
-    t.string('pay_method', 32).notNullable().defaultTo('mock')
+    t.string('pay_method', 32).notNullable().defaultTo('online')
     t.string('status', 32).notNullable()
     t.timestamp('paid_at').nullable()
     t.timestamps(true, true)

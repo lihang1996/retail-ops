@@ -19,4 +19,7 @@ module.exports = {
       },
     },
   },
+  '/api/proj/ai/suggestions': {
+    get: {},
+  },
 }

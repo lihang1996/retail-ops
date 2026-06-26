@@ -3,7 +3,14 @@ module.exports = {
     get: {
       query: {
         type: 'object',
-        properties: { customer_name: { type: 'string' } },
+        properties: {
+          customer_name: { type: 'string' },
+          phone: { type: 'string' },
+          address: { type: 'string' },
+          customer_segment: { type: 'string' },
+          page: { type: 'string' },
+          size: { type: 'string' },
+        },
       },
     },
   },

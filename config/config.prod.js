@@ -1,6 +1,6 @@
 module.exports = {
   name: 'retail-ops-prod',
-  port: parseInt(process.env.PORT || '8080', 10),
+  port: parseInt(process.env.PORT || '8090', 10),
   db: {
     client: 'mysql2',
     connection: {

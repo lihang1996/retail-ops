@@ -19,7 +19,37 @@ const {
   getOrCreateStock,
   updateStockWithVersion,
   upsertLocationQty,
+  lockStock,
+  outboundStock,
 } = require('../common/stock-helper')
+const { computeLocationRisk } = require('../common/warehouse-3d-helper')
+const { ERROR_CODES } = require('../common/error-codes')
+const { paginateQuery, hasFilterValue } = require('../common/pagination')
+const { applyFilters } = require('../common/apply-filters')
+
+const STOCK_LIST_FILTERS = [
+  { key: 'warehouse_id', column: 's.warehouse_id' },
+  { key: 'sku_id', column: 's.sku_id' },
+  { key: 'sku_code', column: 'sku.sku_code', op: 'like', transform: (value) => value.trim() },
+  { key: 'warehouse_name', column: 'w.warehouse_name', op: 'like', transform: (value) => value.trim() },
+]
+
+const STOCK_LOCATION_FILTERS = [
+  { key: 'warehouse_id', column: 'loc.warehouse_id' },
+  { key: 'warehouse_name', column: 'w.warehouse_name', op: 'like', transform: (value) => value.trim() },
+  { key: 'location_code', column: 'loc.location_code', op: 'like', transform: (value) => value.trim() },
+  { key: 'sku_id', column: 'sl.sku_id' },
+]
+
+const STOCK_LOG_FILTERS = [
+  { key: 'sku_id', column: 'l.sku_id' },
+  { key: 'warehouse_id', column: 'l.warehouse_id' },
+  { key: 'action_type', column: 'l.action_type' },
+  { key: 'warehouse_name', column: 'w.warehouse_name', op: 'like', transform: (value) => value.trim() },
+  { key: 'location_code', column: 'loc.location_code', op: 'like', transform: (value) => value.trim() },
+  { key: 'ref_id', column: 'l.ref_id', op: 'like', transform: (value) => value.trim() },
+  { key: 'operator_name', column: 'u.display_name', op: 'like', transform: (value) => value.trim() },
+]
 
 module.exports = (app) => {
   const BaseService = require('@lh199.123/elpis').Service.Bass(app)
@@ -43,13 +73,35 @@ module.exports = (app) => {
           'w.warehouse_code'
         )
 
-      if (query.warehouse_id) qb = qb.andWhere('s.warehouse_id', query.warehouse_id)
-      if (query.sku_id) qb = qb.andWhere('s.sku_id', query.sku_id)
-      if (query.sku_code) qb = qb.andWhere('sku.sku_code', 'like', `%${query.sku_code}%`)
-      if (query.risk === 'low') qb = qb.andWhereRaw('s.available_qty <= s.warning_qty')
+      qb = applyFilters(qb, query, STOCK_LIST_FILTERS)
+      if (hasFilterValue(query.keyword)) {
+        const keyword = query.keyword.trim()
+        qb = qb.andWhere(function matchKeyword() {
+          this.where('sku.sku_code', 'like', `%${keyword}%`)
+            .orWhere('p.product_name', 'like', `%${keyword}%`)
+        })
+      }
 
-      const list = await qb.orderBy('s.updated_at', 'desc')
-      return { list, total: list.length }
+      const risk = hasFilterValue(query.risk) ? query.risk : null
+      if (risk === 'abnormal' || risk === 'low' || risk === 'warning') {
+        qb = qb.andWhere('s.available_qty', '>', 0)
+          .andWhereRaw('s.available_qty <= s.warning_qty')
+      } else if (risk === 'out_of_stock') {
+        qb = qb.andWhere('s.available_qty', '<=', 0)
+      } else if (risk === 'normal') {
+        qb = qb.andWhereRaw('s.available_qty > s.warning_qty')
+      }
+
+      const result = await paginateQuery(qb.orderBy('s.updated_at', 'desc'), query, { countColumn: 's.stock_id' })
+      return {
+        list: result.list.map((row) => ({
+          ...row,
+          stock_risk: Number(row.available_qty) <= 0
+            ? 'none'
+            : (Number(row.available_qty) <= Number(row.warning_qty) ? 'has_risk' : 'normal'),
+        })),
+        total: result.total,
+      }
     }
 
     /** 查询库位级库存分布 */
@@ -60,20 +112,64 @@ module.exports = (app) => {
       let qb = db('stock_locations as sl')
         .join('warehouse_locations as loc', 'sl.location_id', 'loc.location_id')
         .join('product_skus as sku', 'sl.sku_id', 'sku.sku_id')
+        .leftJoin('products as p', 'sku.product_id', 'p.product_id')
         .join('warehouses as w', 'loc.warehouse_id', 'w.warehouse_id')
         .where('sl.tenant_id', tenantId)
         .select(
           'sl.*',
           'loc.location_code',
+          'loc.capacity',
           'sku.sku_code',
-          'w.warehouse_name'
+          'p.product_name',
+          'w.warehouse_name',
+          'w.warehouse_code'
         )
 
-      if (query.warehouse_id) qb = qb.andWhere('loc.warehouse_id', query.warehouse_id)
-      if (query.sku_id) qb = qb.andWhere('sl.sku_id', query.sku_id)
+      qb = applyFilters(qb, query, STOCK_LOCATION_FILTERS)
+      if (hasFilterValue(query.keyword)) {
+        const keyword = query.keyword.trim()
+        qb = qb.andWhere(function matchKeyword() {
+          this.where('sku.sku_code', 'like', `%${keyword}%`)
+            .orWhere('p.product_name', 'like', `%${keyword}%`)
+        })
+      }
 
-      const list = await qb.orderBy('sl.updated_at', 'desc')
-      return { list, total: list.length }
+      const result = await paginateQuery(qb.orderBy('sl.updated_at', 'desc'), query, { countColumn: 'sl.stock_location_id' })
+      const locationIds = [...new Set(result.list.map((row) => row.location_id).filter(Boolean))]
+      const aggregateRows = locationIds.length
+        ? await db('stock_locations')
+          .where({ tenant_id: tenantId })
+          .whereIn('location_id', locationIds)
+          .select('location_id')
+          .sum({ location_total_qty: 'qty' })
+          .countDistinct({ location_sku_count: 'sku_id' })
+          .groupBy('location_id')
+        : []
+      const aggregateMap = aggregateRows.reduce((map, row) => {
+        map[row.location_id] = {
+          location_total_qty: parseInt(row.location_total_qty, 10) || 0,
+          location_sku_count: parseInt(row.location_sku_count, 10) || 0,
+        }
+        return map
+      }, {})
+
+      return {
+        ...result,
+        list: result.list.map((row) => {
+          const aggregate = aggregateMap[row.location_id] || {
+            location_total_qty: Number(row.qty || 0),
+            location_sku_count: 1,
+          }
+          const capacity = Number(row.capacity || 0)
+          const totalQty = aggregate.location_total_qty
+          return {
+            ...row,
+            ...aggregate,
+            capacity_used_pct: capacity > 0 ? Math.round((totalQty / capacity) * 100) : 0,
+            risk_level: computeLocationRisk(totalQty, capacity),
+          }
+        }),
+      }
     }
 
     /** 查询库存变动流水 */
@@ -82,16 +178,43 @@ module.exports = (app) => {
       const tenantId = getTenantId(ctx)
 
       let qb = db('stock_logs as l')
-        .leftJoin('product_skus as sku', 'l.sku_id', 'sku.sku_id')
+        .leftJoin('product_skus as sku', function joinSku() {
+          this.on('l.sku_id', 'sku.sku_id').andOn('l.tenant_id', 'sku.tenant_id')
+        })
+        .leftJoin('products as p', function joinProduct() {
+          this.on('sku.product_id', 'p.product_id').andOn('sku.tenant_id', 'p.tenant_id')
+        })
+        .leftJoin('warehouses as w', function joinWarehouse() {
+          this.on('l.warehouse_id', 'w.warehouse_id').andOn('l.tenant_id', 'w.tenant_id')
+        })
+        .leftJoin('warehouse_locations as loc', function joinLocation() {
+          this.on('l.location_id', 'loc.location_id').andOn('l.tenant_id', 'loc.tenant_id')
+        })
+        .leftJoin('users as u', 'l.operator_id', 'u.user_id')
         .where('l.tenant_id', tenantId)
-        .select('l.*', 'sku.sku_code')
+        .select(
+          'l.*',
+          'sku.sku_code',
+          'p.product_name',
+          'w.warehouse_name',
+          'w.warehouse_code',
+          'loc.location_code',
+          'u.display_name as operator_name'
+        )
 
-      if (query.sku_id) qb = qb.andWhere('l.sku_id', query.sku_id)
-      if (query.warehouse_id) qb = qb.andWhere('l.warehouse_id', query.warehouse_id)
-      if (query.action_type) qb = qb.andWhere('l.action_type', query.action_type)
-
-      const list = await qb.orderBy('l.created_at', 'desc').limit(200)
-      return { list, total: list.length }
+      qb = applyFilters(qb, query, STOCK_LOG_FILTERS)
+      if (hasFilterValue(query.keyword)) {
+        const keyword = query.keyword.trim()
+        qb = qb.andWhere(function matchKeyword() {
+          this.where('sku.sku_code', 'like', `%${keyword}%`)
+            .orWhere('p.product_name', 'like', `%${keyword}%`)
+        })
+      }
+      return paginateQuery(qb.orderBy('l.created_at', 'desc'), query, {
+        countColumn: 'l.log_id',
+        defaultPageSize: query.limit ? 200 : 20,
+        maxPageSize: 500,
+      })
     }
 
     /** 入库：增加 total/available，可选更新库位 qty */
@@ -178,40 +301,14 @@ module.exports = (app) => {
 
       let lockId
       await db.transaction(async (trx) => {
-        const stock = await trx('stocks')
-          .where({ tenant_id: tenantId, sku_id: skuId, warehouse_id: warehouseId })
-          .first()
-        if (!stock || stock.available_qty < lockQty) bizError('可用库存不足', 40900)
-
-        const before = stock.available_qty
-        await updateStockWithVersion(trx, stock, {
-          available_qty: stock.available_qty - lockQty,
-          locked_qty: stock.locked_qty + lockQty,
-        })
-
-        lockId = idGen.next('lock')
-        await trx('stock_locks').insert({
-          lock_id: lockId,
-          tenant_id: tenantId,
-          sku_id: skuId,
-          warehouse_id: warehouseId,
-          qty: lockQty,
-          ref_type: refType,
-          ref_id: refId,
-          status: 'active',
-        })
-
-        await writeStockLog(trx, {
+        lockId = await lockStock(trx, {
           tenantId,
-          skuId,
+          operatorId,
           warehouseId,
-          actionType: 'lock',
-          qtyChange: -lockQty,
-          beforeQty: before,
-          afterQty: before - lockQty,
+          skuId,
+          qty: lockQty,
           refType,
           refId,
-          operatorId,
         })
       })
 
@@ -229,8 +326,9 @@ module.exports = (app) => {
       await db.transaction(async (trx) => {
         const lockRow = await trx('stock_locks')
           .where({ tenant_id: tenantId, lock_id: lockId, status: 'active' })
+          .forUpdate()
           .first()
-        if (!lockRow) bizError('锁定记录不存在', 40400)
+        if (!lockRow) bizError('锁定记录不存在', ERROR_CODES.NOT_FOUND)
 
         const stock = await trx('stocks')
           .where({
@@ -239,7 +337,7 @@ module.exports = (app) => {
             warehouse_id: lockRow.warehouse_id,
           })
           .first()
-        if (!stock) bizError('库存记录不存在', 40400)
+        if (!stock) bizError('库存记录不存在', ERROR_CODES.NOT_FOUND)
 
         const before = stock.available_qty
         await updateStockWithVersion(trx, stock, {
@@ -247,7 +345,10 @@ module.exports = (app) => {
           locked_qty: stock.locked_qty - lockRow.qty,
         })
 
-        await trx('stock_locks').where({ lock_id: lockId }).update({ status: 'released' })
+        const released = await trx('stock_locks')
+          .where({ tenant_id: tenantId, lock_id: lockId, status: 'active' })
+          .update({ status: 'released' })
+        if (released !== 1) bizError('锁定记录并发冲突', ERROR_CODES.CONFLICT)
 
         await writeStockLog(trx, {
           tenantId,
@@ -284,53 +385,15 @@ module.exports = (app) => {
       if (!warehouseId || !skuId || !outQty || outQty <= 0) bizError('参数无效')
 
       await db.transaction(async (trx) => {
-        const stock = await trx('stocks')
-          .where({ tenant_id: tenantId, sku_id: skuId, warehouse_id: warehouseId })
-          .first()
-
-        if (!stock) bizError('库存记录不存在', 40400)
-
-        let deductFromLocked = 0
-        if (lockId) {
-          const lockRow = await trx('stock_locks')
-            .where({ tenant_id: tenantId, lock_id: lockId, status: 'active' })
-            .first()
-          if (!lockRow) bizError('锁定记录不存在', 40400)
-          if (lockRow.qty < outQty) bizError('锁定数量不足', 40900)
-
-          const remainLock = lockRow.qty - outQty
-          await trx('stock_locks').where({ lock_id: lockId }).update({
-            qty: remainLock,
-            status: remainLock === 0 ? 'consumed' : 'active',
-          })
-          deductFromLocked = outQty
-        } else if (stock.available_qty < outQty) {
-          bizError('可用库存不足', 40900)
-        }
-
-        const before = stock.total_qty
-        const patch = {
-          total_qty: stock.total_qty - outQty,
-        }
-        if (deductFromLocked) {
-          patch.locked_qty = stock.locked_qty - deductFromLocked
-        } else {
-          patch.available_qty = stock.available_qty - outQty
-        }
-
-        await updateStockWithVersion(trx, stock, patch)
-
-        await writeStockLog(trx, {
+        await outboundStock(trx, {
           tenantId,
-          skuId,
+          operatorId,
           warehouseId,
-          actionType: 'outbound',
-          qtyChange: -outQty,
-          beforeQty: before,
-          afterQty: before - outQty,
+          skuId,
+          qty: outQty,
+          lockId,
           refType,
           refId,
-          operatorId,
         })
       })
 
